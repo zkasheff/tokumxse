@@ -173,7 +173,7 @@ namespace mongo {
     }
 
     bool TokuFTDictionary::Cursor::ok() const {
-        return _cur.ok();
+        return _ok;
     }
 
     void TokuFTDictionary::Cursor::seek(const Slice &key) {
