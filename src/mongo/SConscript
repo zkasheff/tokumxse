@@ -16,7 +16,7 @@ Import("darwin windows solaris linux nix")
 
 # Boost we need everywhere. 's2' is spammed in all over the place by
 # db/geo unfortunately. pcre is also used many places.
-env.InjectThirdPartyIncludePaths(libraries=['boost', 's2', 'pcre'])
+env.InjectThirdPartyIncludePaths(libraries=['boost', 's2', 'pcre', 'tokuft'])
 env.InjectMongoIncludePaths()
 
 env.SConscript(['base/SConscript',
@@ -42,6 +42,7 @@ env.SConscript(['base/SConscript',
                 'db/storage/kv_heap/SConscript',
                 'db/storage/mmap_v1/SConscript',
                 'db/storage/rocks/SConscript',
+                'db/storage/tokuft/SConscript',
                 'db/SConscript',
                 'installer/msi/SConscript',
                 'logger/SConscript',
@@ -952,6 +953,9 @@ serveronlyLibdeps = ["coreshard",
 
 if has_option("rocksdb" ):
     serveronlyLibdeps.append( 'db/storage/rocks/storage_rocks' )
+
+if has_option("tokuft"):
+    serveronlyLibdeps.append( 'db/storage/tokuft/storage_tokuft' )
 
 serveronlyEnv.Library("serveronly", serverOnlyFiles,
                       LIBDEPS=serveronlyLibdeps )

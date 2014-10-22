@@ -236,6 +236,7 @@ add_option( "rocksdb" , "Enable RocksDB" , 0 , False )
 add_option( "replication-implementation",
             "Controls what implementation is used for the replication system", "?", False,
             type="choice", choices=["impl", "legacy"], const="impl", default="impl" )
+add_option( "tokuft" , "Enable TokuFT" , 0 , False )
 
 # library choices
 js_engine_choices = ['v8-3.12', 'v8-3.25', 'none']
