@@ -58,7 +58,8 @@ namespace mongo {
     }
 
     TokuFTEngine::TokuFTEngine(const std::string &path)
-        : _env(nullptr)
+        : _env(nullptr),
+          _metadataDict(nullptr)
     {
         log() << "tokuft-engine: opening environment at " << path << std::endl;
         _env = ftcxx::DBEnvBuilder()
@@ -68,6 +69,10 @@ namespace mongo {
             // TODO: Checkpoint period, cleaner period
             .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
             .open(path.c_str(), env_flags, env_mode);
+
+        ftcxx::DBTxn txn(_env);
+        _metadataDict.reset(new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp()));
+        txn.commit();
     }
 
     TokuFTEngine::~TokuFTEngine() {

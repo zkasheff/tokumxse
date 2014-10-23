@@ -57,8 +57,15 @@ namespace mongo {
         virtual Status dropKVDictionary( OperationContext* opCtx,
                                           const StringData& ident );
 
+        virtual bool persistDictionaryStats() const { return true; }
+
+        virtual KVDictionary* getMetadataDictionary() {
+            return _metadataDict.get();
+        }
+
     private:
         ftcxx::DBEnv _env;
+        scoped_ptr<KVDictionary> _metadataDict;
     };
 
 } // namespace mongo
