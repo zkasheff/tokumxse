@@ -136,7 +136,7 @@ namespace mongo {
         invariant(_db != NULL);
 
         // Get the next id, which is one greater than the greatest stored.
-        boost::scoped_ptr<KVDictionary::Cursor> cursor(db->getCursor(opCtx, -1));
+        boost::scoped_ptr<KVDictionary::Cursor> cursor(db->getCursor(opCtx, -1, false));
         if (cursor->ok()) {
             const RecordIdKey lastKey(cursor->currKey());
             const DiskLoc lastLoc = lastKey.loc();
@@ -339,7 +339,7 @@ namespace mongo {
                                                 const DiskLoc& start,
                                                 const CollectionScanParams::Direction& dir
                                               ) const {
-        return new KVRecordIterator(_db.get(), txn, start, dir);
+        return new KVRecordIterator(_db.get(), txn, hasWriteIntent(txn), start, dir);
     }
 
     RecordIterator* KVRecordStore::getIteratorForRepair( OperationContext* txn ) const {
@@ -453,14 +453,14 @@ namespace mongo {
 
         invariant(loc.isValid() && !loc.isNull());
         const RecordIdKey key(loc);
-        _cursor.reset(_db->getCursor(_txn, _dir));
+        _cursor.reset(_db->getCursor(_txn, _dir, _takeDocLocks));
         _cursor->seek(key.key());
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
-                                       const DiskLoc &start,
-                                       const CollectionScanParams::Direction &dir) :
-        _db(db), _dir(dir), _savedLoc(DiskLoc()), _savedVal(Slice()), _txn(txn), _cursor() {
+                                                      bool takeDocLocks, const DiskLoc &start,
+                                                      const CollectionScanParams::Direction &dir) :
+        _db(db), _takeDocLocks(takeDocLocks), _dir(dir), _savedLoc(DiskLoc()), _savedVal(Slice()), _txn(txn), _cursor() {
         if (start.isNull()) {
             // A null diskloc means the beginning for a forward cursor,
             // and the end for a reverse cursor.

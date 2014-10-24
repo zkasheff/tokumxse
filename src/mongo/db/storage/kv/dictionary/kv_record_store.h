@@ -33,6 +33,9 @@
 
 #include <string>
 
+#include "mongo/db/concurrency/lock_mgr_defs.h"
+#include "mongo/db/concurrency/lock_state.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/db/storage/capped_callback.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/record_store.h"
@@ -181,9 +184,21 @@ namespace mongo {
 
         static void deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident);
 
+        bool hasWriteIntent(OperationContext *txn) const {
+            const Locker *state = txn->lockState();
+            if (state == NULL) {
+                // only for c++ tests, assume tests can do whatever without proper locks
+                return true;
+            }
+            const LockMode collMode =
+                state->getLockMode(ResourceId(RESOURCE_COLLECTION, _ns));
+            return collMode == MODE_IX || collMode == MODE_X;
+        }
+
     protected:
         class KVRecordIterator : public RecordIterator {
             KVDictionary *_db;
+            bool _takeDocLocks;
             const CollectionScanParams::Direction _dir;
             DiskLoc _savedLoc;
             Slice _savedVal;
@@ -199,7 +214,7 @@ namespace mongo {
 
         public: 
             KVRecordIterator(KVDictionary *db, OperationContext *txn,
-                             const DiskLoc &start,
+                             bool takeDocLocks, const DiskLoc &start,
                              const CollectionScanParams::Direction &dir);
 
             bool isEOF();

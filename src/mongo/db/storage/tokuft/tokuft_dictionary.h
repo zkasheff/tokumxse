@@ -83,10 +83,10 @@ namespace mongo {
         class Cursor : public KVDictionary::Cursor {
         public:
             // Full scan
-            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction = 1);
+            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction, bool takeDocLocks);
 
             // Range scan
-            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction = 1);
+            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction, bool takeDocLocks);
 
             virtual bool ok() const;
 
@@ -111,7 +111,7 @@ namespace mongo {
 
         virtual Status remove(OperationContext *opCtx, const Slice &key);
 
-        virtual KVDictionary::Cursor *getCursor(OperationContext *opCtx, const int direction = 1) const;
+        virtual KVDictionary::Cursor *getCursor(OperationContext *opCtx, const int direction = 1, bool takeDocLocks = true) const;
 
         virtual const char *name() const { return "tokuft"; }
 

@@ -121,8 +121,8 @@ namespace mongo {
         return error2status(r);
     }
 
-    KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const int direction) const {
-        return new Cursor(*this, opCtx, direction);
+    KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const int direction, bool takeDocLocks) const {
+        return new Cursor(*this, opCtx, direction, takeDocLocks);
     }
 
     KVDictionary::Stats TokuFTDictionary::getStats() const {
@@ -157,17 +157,20 @@ namespace mongo {
         return Status::OK();
     }
 
-    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
-        : _cur(dict.db().buffered_cursor(_getDBTxn(txn), dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1)))
+    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction, bool takeDocLocks)
+        : _cur(dict.db().buffered_cursor(_getDBTxn(txn), dict.comparator(), ftcxx::DB::NullFilter(),
+                                         takeDocLocks ? DB_RMW : 0,
+                                         (direction == 1)))
     {
         advance();
     }
 
-    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction)
+    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction, bool takeDocLocks)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
                                          ftcxx::Slice(leftKey.data(), leftKey.size()), ftcxx::Slice(rightKey.data(), rightKey.size()),
                                          dict.comparator(), ftcxx::DB::NullFilter(),
-                                         0, (direction == 1), false, true))
+                                         takeDocLocks ? DB_RMW : 0,
+                                         (direction == 1), false, true))
     {
         advance();
     }

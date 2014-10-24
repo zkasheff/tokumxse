@@ -178,7 +178,7 @@ namespace mongo {
                        << name );
     }
 
-    KVDictionary::Cursor *KVHeapDictionary::getCursor(OperationContext *opCtx, const int direction ) const {
+    KVDictionary::Cursor *KVHeapDictionary::getCursor(OperationContext *opCtx, const int direction, bool takeDocLocks ) const {
         return new Cursor(_map, _cmp, direction);
     }
 

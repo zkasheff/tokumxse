@@ -123,7 +123,7 @@ namespace mongo {
             return Status::OK();
         }
 
-        KVDictionary::Cursor *getCursor(OperationContext *opCtx, const int direction = 1) const;
+        KVDictionary::Cursor *getCursor(OperationContext *opCtx, const int direction = 1, bool takeDocLocks = true) const;
     };
 
 } // namespace mongo

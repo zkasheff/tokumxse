@@ -267,7 +267,7 @@ namespace mongo {
          *
          * Return: Cursor interface implementation (ownership passes to caller)
          */
-        virtual Cursor *getCursor(OperationContext *opCtx, const int direction = 1) const = 0;
+        virtual Cursor *getCursor(OperationContext *opCtx, const int direction = 1, bool takeDocLocks = true) const = 0;
     };
 
 } // namespace mongo
