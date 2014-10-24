@@ -31,6 +31,7 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include "mongo/db/operation_context.h"
+#include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
@@ -60,6 +61,20 @@ namespace mongo {
             return cmp(a, b);
         }
 
+        static int tokuft_update(const ftcxx::Slice &desc,
+                                 const ftcxx::Slice &key, const ftcxx::Slice &oldVal,
+                                 const ftcxx::Slice &extra, ftcxx::SetvalFunc setval) {
+            scoped_ptr<KVUpdateMessage> message(KVUpdateMessage::fromSerialized(ftslice2slice(extra)));
+            Slice kvOldVal = ftslice2slice(oldVal);
+            Slice kvNewVal;
+            Status status = message->apply(kvOldVal, kvNewVal);
+            invariant(status.isOK());
+
+            // TODO: KVUpdateMessage should be able to specify that a key should be deleted.
+            setval(slice2ftslice(kvNewVal));
+            return 0;
+        }
+
     }
 
     TokuFTEngine::TokuFTEngine(const std::string &path)
@@ -83,6 +98,7 @@ namespace mongo {
             .set_cachesize(cacheSizeGB, cacheSizeB)
             .checkpointing_set_period(60)
             .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
+            .set_update(&ftcxx::wrapped_updater<tokuft_update>)
             .open(path.c_str(), env_flags, env_mode);
 
         _lfThread.reset(new boost::thread(stdx::bind(std::mem_fn(&TokuFTEngine::logFlushThread), this)));

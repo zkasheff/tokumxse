@@ -36,6 +36,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/bson/mutable/damage_vector.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
+#include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/record_data.h"
 
@@ -108,6 +109,13 @@ namespace mongo {
         virtual Status get(OperationContext *opCtx, const Slice &key, Slice &value) const;
 
         virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value);
+
+        virtual Status update(OperationContext *opCtx, const Slice &key, const Slice &oldValue,
+                              const KVUpdateMessage &message) {
+            return update(opCtx, key, message);
+        }
+
+        virtual Status update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message);
 
         virtual Status remove(OperationContext *opCtx, const Slice &key);
 

@@ -116,6 +116,12 @@ namespace mongo {
         return error2status(r);
     }
 
+    Status TokuFTDictionary::update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message) {
+        Slice value = message.serialize();
+        int r = _db.update(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value));
+        return error2status(r);
+    }
+
     Status TokuFTDictionary::remove(OperationContext *opCtx, const Slice &key) {
         int r = _db.del(_getDBTxn(opCtx), slice2ftslice(key));
         return error2status(r);
