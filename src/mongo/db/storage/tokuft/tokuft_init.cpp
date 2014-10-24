@@ -49,7 +49,7 @@ namespace mongo {
          * TokuFT supports row-level ("document-level") locking
          */
         bool supportsDocLocking() const {
-            return true;
+            return false;
         }
     };
 
