@@ -128,9 +128,9 @@ namespace mongo {
     KVDictionary::Stats TokuFTDictionary::getStats() const {
         KVDictionary::Stats kvStats;
         ftcxx::Stats stats = _db.get_stats();
-        kvStats.dataSize = stats.dataSize;
-        kvStats.storageSize = stats.fileSize;
-        kvStats.numKeys = stats.numberOfKeys;
+        kvStats.dataSize = stats.data_size;
+        kvStats.storageSize = stats.file_size;
+        kvStats.numKeys = stats.num_keys;
         return kvStats;
     }
     
