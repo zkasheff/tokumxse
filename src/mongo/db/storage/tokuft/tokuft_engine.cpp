@@ -34,9 +34,11 @@
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
+#include "mongo/db/storage_options.h"
 #include "mongo/stdx/functional.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/processinfo.h"
 #include "mongo/util/time_support.h"
 
 #include <ftcxx/db_env.hpp>
@@ -66,12 +68,20 @@ namespace mongo {
           _lfRunning(true),
           _lfFinished(false)
     {
+        ProcessInfo pi;
+        unsigned long long memSizeMB = pi.getMemSizeMB();
+        size_t cacheSize = (memSizeMB / 2) * (1<<20);
+        uint32_t cacheSizeGB = cacheSize >> 30;
+        uint32_t cacheSizeB = cacheSize & ~uint32_t(1<<30);
+
         log() << "TokuFT: opening environment at " << path << std::endl;
         _env = ftcxx::DBEnvBuilder()
             // TODO: Direct I/O
             // TODO: Lock wait timeout callback, lock killed callback,
             //       Fsync log period, redzone, logdir, etc
             // TODO: Checkpoint period, cleaner period
+            .set_cachesize(cacheSizeGB, cacheSizeB)
+            .checkpointing_set_period(60)
             .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
             .open(path.c_str(), env_flags, env_mode);
 
