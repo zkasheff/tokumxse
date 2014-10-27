@@ -72,7 +72,6 @@ namespace mongo {
         void syncDataAndTruncateJournal();
 
     private:
-        void _finishUnitOfWork(const bool commit);
         static bool _opCtxIsWriting(OperationContext *opCtx);
 
         const ftcxx::DBEnv &_env;

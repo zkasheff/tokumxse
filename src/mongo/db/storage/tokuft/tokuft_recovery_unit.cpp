@@ -46,63 +46,56 @@ namespace mongo {
     {}
 
     TokuFTRecoveryUnit::~TokuFTRecoveryUnit() {
-        // We should have a transaction iff the depth is non-zero
-        invariant((_depth > 0) == (_txn.txn() != NULL));
-
+        invariant(_changes.empty());
+        invariant(_depth == 0);
         // Abort the underlying transaction if it is still live.
         if (_txn.txn() != NULL) {
-            _finishUnitOfWork(false);
+            _txn.abort();
         }
     }
 
     void TokuFTRecoveryUnit::beginUnitOfWork() {
-        if (_depth == 0) {
+        if (_depth++ == 0) {
             if (_txn.txn() == NULL) {
                 _txn = ftcxx::DBTxn(_env, DB_SERIALIZABLE);
             }
             _willCommit = false;
         }
-        _depth++;
-    }
-
-    void TokuFTRecoveryUnit::_finishUnitOfWork(const bool commit) {
-        invariant(_txn.txn() != NULL);
-
-        // Don't bother to fsync on commit here since we commit the log
-        // in the background on a user-defined period. If the caller wants
-        // to force a log sync, they call RecoveryUnit::awaitCommit()
-        if (commit) {
-            _txn.commit(DB_TXN_NOSYNC);
-        } else {
-            _txn.abort();
-        }
-
-        // Apply and delete changes in forward ordering during
-        // commit, and in reverse order during rollback.
-        while (!_changes.empty()) {
-            RecoveryUnit::Change *ch;
-            if (commit) {
-                ch = _changes.front();
-                _changes.pop_front();
-                ch->commit();
-            } else {
-                ch = _changes.back();
-                _changes.pop_back();
-                ch->rollback();
-            }
-            delete ch;
-        }
     }
 
     void TokuFTRecoveryUnit::commitUnitOfWork() {
         invariant(_depth > 0);
+        if (_depth == 1) {
+            while (!_changes.empty()) {
+                RecoveryUnit::Change *ch;
+                ch = _changes.front();
+                _changes.pop_front();
+                ch->commit();
+                delete ch;
+            }
+        }
         _willCommit = true;
     }
 
     void TokuFTRecoveryUnit::endUnitOfWork() {
         invariant(_depth > 0);
         if (--_depth == 0) {
-            _finishUnitOfWork(_willCommit);
+            if (_willCommit) {
+                _txn.commit(DB_TXN_NOSYNC);
+                invariant(_changes.empty());
+            } else {
+                _txn.abort();
+
+                while (!_changes.empty()) {
+                    RecoveryUnit::Change *ch;
+                    ch = _changes.back();
+                    _changes.pop_back();
+                    ch->rollback();
+                    delete ch;
+                }
+            }
+
+            _willCommit = false;
         }
     }
 
