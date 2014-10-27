@@ -44,13 +44,6 @@ namespace mongo {
         }
 
         virtual ~TokuFTStorageEngine() { }
-
-        /**
-         * TokuFT supports row-level ("document-level") locking
-         */
-        bool supportsDocLocking() const {
-            return false;
-        }
     };
 
     class TokuFTFactory : public StorageEngine::Factory {

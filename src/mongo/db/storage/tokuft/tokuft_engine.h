@@ -47,6 +47,15 @@ namespace mongo {
         TokuFTEngine(const std::string &path);
         virtual ~TokuFTEngine();
 
+        /**
+         * TokuFT supports row-level ("document-level") locking.
+         *
+         * We disable it for now until the API is finalized.
+         */
+        bool supportsDocLocking() const {
+            return false;
+        }
+
         virtual RecoveryUnit* newRecoveryUnit();
 
         virtual Status createKVDictionary( OperationContext* opCtx,
