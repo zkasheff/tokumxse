@@ -156,6 +156,7 @@ namespace mongo {
 
     void KVRecordStore::_updateStats(OperationContext *opCtx, int64_t numRecordsDelta, int64_t dataSizeDelta) {
         if (_metadataDict) {
+            WriteUnitOfWork wuow(opCtx);
             KVUpdateIncrementMessage nrMessage(numRecordsDelta);
             Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
             massert(28540, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString(), s.isOK());
@@ -163,6 +164,7 @@ namespace mongo {
             KVUpdateIncrementMessage dsMessage(dataSizeDelta);
             s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
             massert(28541, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString(), s.isOK());
+            wuow.commit();
         }
     }
 
@@ -177,16 +179,20 @@ namespace mongo {
     }
 
     void KVRecordStore::setStatsMetadataDictionary(OperationContext *opCtx, KVDictionary *metadataDict) {
+        WriteUnitOfWork wuow(opCtx);
         _metadataDict = metadataDict;
         _initializeStatsForKey(opCtx, _numRecordsMetadataKey);
         _initializeStatsForKey(opCtx, _dataSizeMetadataKey);
+        wuow.commit();
     }
 
     void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
+        WriteUnitOfWork wuow(opCtx);
         Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
         massert(28542, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
         s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
         massert(28543, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString(), s.isOK());
+        wuow.commit();
     }
 
     long long KVRecordStore::dataSize( OperationContext* txn ) const {
