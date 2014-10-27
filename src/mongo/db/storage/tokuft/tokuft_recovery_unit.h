@@ -38,6 +38,7 @@
 
 namespace mongo {
 
+    class OperationContext;
     class TokuFTStorageEngine;
 
     class TokuFTRecoveryUnit : public RecoveryUnit {
@@ -72,10 +73,12 @@ namespace mongo {
 
     private:
         void _finishUnitOfWork(const bool commit);
+        static bool _opCtxIsWriting(OperationContext *opCtx);
 
-        int _depth;
         const ftcxx::DBEnv &_env;
         ftcxx::DBTxn _txn;
+        int _depth;
+        bool _willCommit;
 
         // Owns each Change object: responsible for commit/rollback and delete.
         std::deque<RecoveryUnit::Change *> _changes;
@@ -83,13 +86,11 @@ namespace mongo {
     public:
         // -- TokuFT Specific
 
-        DB_TXN *db_txn() const {
-            return _txn.txn();
+        DB_TXN *db_txn(OperationContext *opCtx) {
+            return txn(opCtx).txn();
         }
 
-        const ftcxx::DBTxn &txn() const {
-            return _txn;
-        }
+        const ftcxx::DBTxn &txn(OperationContext *opCtx);
     };
 
 }  // namespace mongo
