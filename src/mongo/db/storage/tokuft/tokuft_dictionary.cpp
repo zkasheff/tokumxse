@@ -1,6 +1,5 @@
 // tokuft_dictionary.cpp
 
-
 /**
  *    Copyright (C) 2014 MongoDB Inc.
  *
@@ -165,13 +164,14 @@ namespace mongo {
     }
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
-        : _cur(dict.db().buffered_cursor(_getDBTxn(txn), dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1)))
+        : _cur(dict.db().buffered_cursor(ftcxx::DBTxn(), // no concurrency yet, _getDBTxn(txn),
+                                         dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1)))
     {
         advance();
     }
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction)
-        : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
+        : _cur(dict.db().buffered_cursor(ftcxx::DBTxn(), // no concurrency yet, _getDBTxn(txn),
                                          ftcxx::Slice(leftKey.data(), leftKey.size()), ftcxx::Slice(rightKey.data(), rightKey.size()),
                                          dict.comparator(), ftcxx::DB::NullFilter(),
                                          0, (direction == 1), false, true))

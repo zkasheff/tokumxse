@@ -73,6 +73,13 @@ namespace mongo {
         _txn = ftcxx::DBTxn(_env, DB_SERIALIZABLE);
     }
 
+    void TokuFTRecoveryUnit::commitAndRestart() {
+        invariant(_depth == 0);
+        invariant(_changes.size() == 0);
+        invariant(_txn.txn() == NULL);
+        // no-op since we have no transaction
+    }
+
     void TokuFTRecoveryUnit::endUnitOfWork() {
         invariant(_depth > 0);
 

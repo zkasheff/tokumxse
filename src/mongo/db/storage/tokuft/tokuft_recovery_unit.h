@@ -56,10 +56,7 @@ namespace mongo {
 
         bool awaitCommit();
 
-        void commitAndRestart() {
-            commitUnitOfWork();
-            beginUnitOfWork();
-        }
+        void commitAndRestart();
 
         void registerChange(Change* change);
 
