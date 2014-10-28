@@ -117,8 +117,4 @@ namespace mongo {
         return data;
     }
 
-    void TokuFTRecoveryUnit::syncDataAndTruncateJournal() {
-        log() << "tokuft-engine: syncDataAndTruncateJournal does nothing" << std::endl;
-    }
-
 }  // namespace mongo

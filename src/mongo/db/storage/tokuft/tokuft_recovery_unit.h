@@ -69,8 +69,6 @@ namespace mongo {
 
         void *writingPtr(void *data, size_t len);
 
-        void syncDataAndTruncateJournal();
-
     private:
         typedef boost::shared_ptr<Change> ChangePtr;
         typedef std::vector<ChangePtr> Changes;
