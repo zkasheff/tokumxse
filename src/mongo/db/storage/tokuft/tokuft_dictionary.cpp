@@ -1,5 +1,6 @@
 // tokuft_dictionary.cpp
 
+
 /**
  *    Copyright (C) 2014 MongoDB Inc.
  *
@@ -107,7 +108,7 @@ namespace mongo {
             }
         } cb(value);
 
-        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key), DB_SET, cb);
+        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key), 0, cb);
         return error2status(r);
     }
 

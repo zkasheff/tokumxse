@@ -150,7 +150,7 @@ namespace mongo {
     int64_t KVRecordStore::_getStats(OperationContext *opCtx, const std::string &key) const {
         Slice valSlice;
         Status s = _metadataDict->get(opCtx, Slice(key), valSlice);
-        massert(28539, str::stream() << "KVRecordStore: error getting stats: " << s.toString(), s.isOK());
+        massert(28548, str::stream() << "KVRecordStore: error getting stats: " << s.toString(), s.isOK());
         return mongo::endian::littleToNative(valSlice.as<int64_t>());
     }
 
@@ -221,7 +221,7 @@ namespace mongo {
                 return RecordData(nullptr, 0);
             } else {
                 log() << "storage engine get() failed, operation will fail: " << status.toString();
-                uasserted(28538, status.toString());
+                uasserted(28549, status.toString());
             }
         }
 

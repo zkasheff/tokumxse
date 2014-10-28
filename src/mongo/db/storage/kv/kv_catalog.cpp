@@ -119,7 +119,7 @@ namespace {
                                      const StringData& ns,
                                      const CollectionOptions& options ) {
         boost::scoped_ptr<Lock::ResourceLock> rLk;
-        if (!_isRsThreadSafe)
+        if (!_isRsThreadSafe && opCtx->lockState())
             rLk.reset(new Lock::ResourceLock(opCtx->lockState(), catalogRID, MODE_X));
 
         std::stringstream ss;
@@ -175,7 +175,7 @@ namespace {
                                    DiskLoc* out ) const {
 
         boost::scoped_ptr<Lock::ResourceLock> rLk;
-        if (!_isRsThreadSafe)
+        if (!_isRsThreadSafe && opCtx->lockState())
             rLk.reset(new Lock::ResourceLock(opCtx->lockState(), catalogRID, MODE_S));
 
         DiskLoc dl;
