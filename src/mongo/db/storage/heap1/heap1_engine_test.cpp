@@ -1,3 +1,5 @@
+// heap1_engine_test.cpp
+
 /**
  *    Copyright (C) 2014 MongoDB Inc.
  *
@@ -26,57 +28,27 @@
  *    it in the license file.
  */
 
-#pragma once
-
-#include <vector>
-
-#include "mongo/db/jsobj.h"
+#include "mongo/db/storage/heap1/heap1_engine.h"
+#include "mongo/db/storage/kv/kv_engine_test_harness.h"
 
 namespace mongo {
 
-    class Status;
-
-namespace repl {
-
-    /**
-     * Arguments to the handshake command.
-     */
-    class UpdatePositionArgs {
+    class Heap1KVHarnessHelper : public KVHarnessHelper {
     public:
-        struct UpdateInfo {
-            UpdateInfo(const OID& anRid, const OpTime& aTs, long long aCfgver, long long aMemberID);
+        Heap1KVHarnessHelper() : _engine( new Heap1Engine()) {}
 
-            OID rid;
-            OpTime ts;
-            long long cfgver;
-            long long memberID;
-        };
+        virtual KVEngine* restartEngine() {
+            // Intentionally not restarting since heap doesn't keep data across restarts
+            return _engine.get();
+        }
 
-        typedef std::vector<UpdateInfo>::const_iterator UpdateIterator;
+        virtual KVEngine* getEngine() { return _engine.get(); }
 
-        /**
-         * Initializes this UpdatePositionArgs from the contents of "argsObj".
-         */
-        Status initialize(const BSONObj& argsObj);
-
-        /**
-         * Gets a begin iterator over the UpdateInfos stored in this UpdatePositionArgs.
-         */
-        UpdateIterator updatesBegin() const { return _updates.begin(); }
-
-        /**
-         * Gets an end iterator over the UpdateInfos stored in this UpdatePositionArgs.
-         */
-        UpdateIterator updatesEnd() const { return _updates.end(); }
-
-        /**
-         * Returns a BSONified version of the object.
-         * _updates is only included if it is not empty.
-         */
-        BSONObj toBSON() const;
     private:
-        std::vector<UpdateInfo> _updates;
+        boost::scoped_ptr<Heap1Engine> _engine;
     };
 
-} // namespace repl
-} // namespace mongo
+    KVHarnessHelper* KVHarnessHelper::create() {
+        return new Heap1KVHarnessHelper();
+    }
+}
