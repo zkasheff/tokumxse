@@ -107,7 +107,10 @@ namespace mongo {
             }
         } cb(value);
 
-        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key), 0, cb);
+        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key),
+                             // TODO: No doc-level locking yet, so never take locks on read.
+                             DB_PRELOCKED | DB_PRELOCKED_WRITE,
+                             cb);
         return error2status(r);
     }
 
