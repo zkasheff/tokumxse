@@ -605,6 +605,14 @@ namespace mongo {
         currentOp->done();
         int executionTime = currentOp->debug().executionTime = currentOp->totalTimeMillis();
         currentOp->debug().recordStats();
+        if (currentOp->getOp() == dbInsert) {
+            // This is a wrapped operation, so make sure to count this part of the op
+            // SERVER-13339: Properly fix the handling of context in the insert path.
+            // Right now it caches client contexts in ExecInsertsState, unlike the
+            // update and remove operations.
+            currentOp->recordGlobalTime(txn->lockState()->isWriteLocked(),
+                                        currentOp->totalTimeMicros());
+        }
 
         if ( opError ) {
             currentOp->debug().exceptionInfo = ExceptionInfo( opError->getErrMessage(),
@@ -1140,16 +1148,16 @@ namespace mongo {
         // Updates from the write commands path can yield.
         request.setYieldPolicy(PlanExecutor::YIELD_AUTO);
 
-        UpdateExecutor executor(&request, &txn->getCurOp()->debug());
-        Status status = executor.prepare();
-        if (!status.isOK()) {
-            result->setError(toWriteError(status));
-            return;
-        }
-
         int attempt = 1;
         bool createCollection = false;
         for ( int fakeLoop = 0; fakeLoop < 1; fakeLoop++ ) {
+
+            UpdateExecutor executor(&request, &txn->getCurOp()->debug());
+            Status status = executor.prepare();
+            if (!status.isOK()) {
+                result->setError(toWriteError(status));
+                return;
+            }
 
             if ( createCollection ) {
                 Lock::DBLock lk(txn->lockState(), nsString.db(), MODE_X);
@@ -1227,7 +1235,7 @@ namespace mongo {
                 }
             }
             catch (const DBException& ex) {
-                status = ex.toStatus();
+                Status status = ex.toStatus();
                 if (ErrorCodes::isInterruption(status.code())) {
                     throw;
                 }
@@ -1256,16 +1264,17 @@ namespace mongo {
         // Deletes running through the write commands path can yield.
         request.setYieldPolicy(PlanExecutor::YIELD_AUTO);
 
-        DeleteExecutor executor( &request );
-        Status status = executor.prepare();
-        if ( !status.isOK() ) {
-            result->setError(toWriteError(status));
-            return;
-        }
-
         int attempt = 1;
         while ( 1 ) {
             try {
+
+                DeleteExecutor executor( &request );
+                Status status = executor.prepare();
+                if ( !status.isOK() ) {
+                    result->setError(toWriteError(status));
+                    return;
+                }
+
                 Lock::DBLock dbLock(txn->lockState(), nss.db(), MODE_IX);
                 Lock::CollectionLock collLock(txn->lockState(), nss.ns(), MODE_IX);
 
@@ -1288,7 +1297,7 @@ namespace mongo {
                       << ", attempt: " << attempt++ << " retrying";
             }
             catch ( const DBException& ex ) {
-                status = ex.toStatus();
+                Status status = ex.toStatus();
                 if (ErrorCodes::isInterruption(status.code())) {
                     throw;
                 }

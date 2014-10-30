@@ -130,11 +130,17 @@ namespace mongo {
         const string newLocation(
                 chunkDistribution.getBestReceieverShard(tagStatus.getValue()));
 
+        if (newLocation.empty()) {
+            LOG(1) << "recently split chunk: " << chunk
+                   << " but no suitable shard to move to";
+            return false;
+        }
+
         if (chunk.getShard() == newLocation) {
             // if this is the best shard, then we shouldn't do anything.
             LOG(1) << "recently split chunk: " << chunk
-                   << " already in the best shard: " << endl;
-            return false; // we did split even if we didn't migrate
+                   << " already in the best shard" << endl;
+            return false;
         }
 
         ChunkPtr toMove = chunkMgr->findIntersectingChunk(chunk.getMin());
@@ -150,14 +156,14 @@ namespace mongo {
         BSONObj res;
 
         WriteConcernOptions noThrottle;
-        massert(10412,
-                str::stream() << "moveAndCommit failed: " << res,
-                toMove->moveAndCommit(newLocation,
-                                      Chunk::MaxChunkSize,
-                                      &noThrottle, /* secondaryThrottle */
-                                      false, /* waitForDelete - small chunk, no need */
-                                      0, /* maxTimeMS - don't time out */
-                                      res));
+        if (!toMove->moveAndCommit(newLocation,
+                                   Chunk::MaxChunkSize,
+                                   &noThrottle, /* secondaryThrottle */
+                                   false, /* waitForDelete - small chunk, no need */
+                                   0, /* maxTimeMS - don't time out */
+                                   res)) {
+            msgassertedNoTrace(10412, str::stream() << "moveAndCommit failed: " << res);
+        }
 
         // update our config
         manager.reload();

@@ -191,10 +191,11 @@ namespace {
         ReplicaSetConfig localConfig;
         Status status = localConfig.initialize(cfg.getValue());
         if (!status.isOK()) {
-            warning() << "Locally stored replica set configuration does not parse; "
-                "waiting for rsInitiate or remote heartbeat; Got " << status << " while parsing " <<
-                cfg.getValue();
-            return true;
+            error() << "Locally stored replica set configuration does not parse; See "
+                    "http://www.mongodb.org/dochub/core/recover-replica-set-from-invalid-config "
+                    "for information on how to recover from this. Got \"" <<
+                    status << "\" while parsing " << cfg.getValue();
+            fassertFailedNoTrace(28545);
         }
 
         StatusWith<OpTime> lastOpTimeStatus = _externalState->loadLastOpTime(txn);
@@ -232,10 +233,20 @@ namespace {
                                                            _rsConfig,
                                                            localConfig);
         if (!myIndex.isOK()) {
-            warning() << "Locally stored replica set configuration not valid for current node; "
-                "waiting for reconfig or remote heartbeat; Got " << myIndex.getStatus() <<
-                " while validating " << localConfig.toBSON();
-            myIndex = StatusWith<int>(-1);
+            if (myIndex.getStatus() == ErrorCodes::NodeNotFound ||
+                    myIndex.getStatus() == ErrorCodes::DuplicateKey) {
+                warning() << "Locally stored replica set configuration does not have a valid entry "
+                        "for the current node; waiting for reconfig or remote heartbeat; Got \"" <<
+                        myIndex.getStatus() << "\" while validating " << localConfig.toBSON();
+                myIndex = StatusWith<int>(-1);
+            }
+            else {
+                error() << "Locally stored replica set configuration is invalid; See "
+                        "http://www.mongodb.org/dochub/core/recover-replica-set-from-invalid-config"
+                        " for information on how to recover from this. Got \"" <<
+                        myIndex.getStatus() << "\" while validating " << localConfig.toBSON();
+                fassertFailedNoTrace(28544);
+            }
         }
 
         if (localConfig.getReplSetName() != _settings.ourSetName()) {
@@ -674,11 +685,14 @@ namespace {
         invariant(lock->owns_lock());
         _updateSlaveInfoOptime_inlock(&_slaveInfo[_getMyIndexInSlaveInfo_inlock()], ts);
 
-        if (_getReplicationMode_inlock() == modeReplSet) {
-            lock->unlock();
-            _externalState->forwardSlaveProgress(); // Must do this outside _mutex
+        if (_getReplicationMode_inlock() != modeReplSet) {
+            return;
         }
-
+        if (_getCurrentMemberState_inlock().primary()) {
+            return;
+        }
+        lock->unlock();
+        _externalState->forwardSlaveProgress(); // Must do this outside _mutex
     }
 
     OpTime ReplicationCoordinatorImpl::getMyLastOptime() const {
@@ -1779,7 +1793,7 @@ namespace {
         Status status = newConfig.initialize(configObj);
         if (!status.isOK()) {
             error() << "replSet initiate got " << status << " while parsing " << configObj << rsLog;
-            return status;
+            return Status(ErrorCodes::InvalidReplicaSetConfig, status.reason());;
         }
         if (newConfig.getReplSetName() != _settings.ourSetName()) {
             str::stream errmsg;
@@ -1787,14 +1801,14 @@ namespace {
                 newConfig.getReplSetName() << ", but command line reports " <<
                 _settings.ourSetName() << "; rejecting";
             error() << std::string(errmsg);
-            return Status(ErrorCodes::BadValue, errmsg);
+            return Status(ErrorCodes::InvalidReplicaSetConfig, errmsg);
         }
 
         StatusWith<int> myIndex = validateConfigForInitiate(_externalState.get(), newConfig);
         if (!myIndex.isOK()) {
             error() << "replSet initiate got " << myIndex.getStatus() << " while validating " <<
                 configObj << rsLog;
-            return myIndex.getStatus();
+            return Status(ErrorCodes::InvalidReplicaSetConfig, myIndex.getStatus().reason());
         }
 
         log() << "replSet replSetInitiate config object with " << newConfig.getNumMembers() <<
@@ -2025,7 +2039,7 @@ namespace {
             somethingChanged = true;
         }
 
-        if (somethingChanged) {
+        if (somethingChanged && !_getCurrentMemberState_inlock().primary()) {
             lock.unlock();
             _externalState->forwardSlaveProgress(); // Must do this outside _mutex
         }
@@ -2059,8 +2073,10 @@ namespace {
             slaveInfo->rid = handshake.getRid();
             slaveInfo->hostAndPort = member->getHostAndPort();
 
-            lock.unlock();
-            _externalState->forwardSlaveHandshake(); // must do outside _mutex
+            if (!_getCurrentMemberState_inlock().primary()) {
+                lock.unlock();
+                _externalState->forwardSlaveHandshake(); // must do outside _mutex
+            }
             return Status::OK();
         }
 

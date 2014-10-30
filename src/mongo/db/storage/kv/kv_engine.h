@@ -88,10 +88,21 @@ namespace mongo {
         virtual Status dropSortedDataInterface( OperationContext* opCtx,
                                                 const StringData& ident ) = 0;
 
+        // optional
+        virtual int flushAllFiles( bool sync ) { return 0; }
+
         /**
          * This must not change over the lifetime of the engine.
          */
         virtual bool supportsDocLocking() const = 0;
+
+        virtual Status okToRename( OperationContext* opCtx,
+                                   const StringData& fromNS,
+                                   const StringData& toNS,
+                                   const StringData& ident,
+                                   const RecordStore* originalRecordStore ) const {
+            return Status::OK();
+        }
     };
 
 }
