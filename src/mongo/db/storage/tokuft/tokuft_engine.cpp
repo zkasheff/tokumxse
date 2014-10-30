@@ -160,6 +160,11 @@ namespace mongo {
 
         std::string identStr = ident.toString();
         const int r = _env.env()->dbremove(_env.env(), _getDBTxn(opCtx).txn(), identStr.c_str(), NULL, 0);
+        if (r != 0) {
+            return Status(ErrorCodes::InternalError,
+                          str::stream() << "TokuFTEngine::dropKVDictionary - Not found "
+                                        << ident);
+        }
         invariant(r == 0);
         return Status::OK();
     }
