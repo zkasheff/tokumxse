@@ -1,4 +1,3 @@
-
 /**
  *    Copyright (C) 2014 MongoDB Inc.
  *    Copyright (C) 2014 Tokutek Inc.

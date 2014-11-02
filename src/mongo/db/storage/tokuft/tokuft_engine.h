@@ -47,15 +47,6 @@ namespace mongo {
         TokuFTEngine(const std::string &path);
         virtual ~TokuFTEngine();
 
-        /**
-         * TokuFT supports row-level ("document-level") locking.
-         *
-         * We disable it for now until the API is finalized.
-         */
-        bool supportsDocLocking() const {
-            return false;
-        }
-
         virtual RecoveryUnit* newRecoveryUnit();
 
         virtual Status createKVDictionary( OperationContext* opCtx,
@@ -70,9 +61,34 @@ namespace mongo {
         virtual Status dropKVDictionary( OperationContext* opCtx,
                                           const StringData& ident );
 
-        virtual bool persistDictionaryStats() const { return true; }
+        virtual int64_t getIdentSize( OperationContext* opCtx,
+                              const StringData& ident ) {
+            return 1;
+        }
 
-        virtual KVDictionary* getMetadataDictionary() {
+        virtual Status repairIdent( OperationContext* opCtx,
+                            const StringData& ident ) {
+            return Status::OK();
+        }
+
+        // TODO: Take a checkpoint? Do we have to? What's the contract?
+        //       Maybe doing nothing is sufficient.
+        virtual int flushAllFiles( bool sync ) { return 0; }
+
+        virtual bool isDurable() const { return true; }
+
+        /**
+         * TokuFT supports row-level ("document-level") locking.
+         *
+         * We disable it for now until the API is finalized.
+         */
+        virtual bool supportsDocLocking() const { return false; }
+
+        // ------------------------------------------------------------------ //
+
+        bool persistDictionaryStats() const { return true; }
+
+        KVDictionary* getMetadataDictionary() {
             return _metadataDict.get();
         }
 

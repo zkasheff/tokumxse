@@ -158,11 +158,11 @@ namespace mongo {
         if (_metadataDict) {
             KVUpdateIncrementMessage nrMessage(numRecordsDelta);
             Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
-            massert(28540, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString(), s.isOK());
+            massert(28554, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString(), s.isOK());
 
             KVUpdateIncrementMessage dsMessage(dataSizeDelta);
             s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
-            massert(28541, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString(), s.isOK());
+            massert(28555, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString(), s.isOK());
         }
     }
 
@@ -184,9 +184,9 @@ namespace mongo {
 
     void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
         Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
-        massert(28542, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
+        massert(28550, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
         s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
-        massert(28543, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString(), s.isOK());
+        massert(28551, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString(), s.isOK());
     }
 
     long long KVRecordStore::dataSize( OperationContext* txn ) const {
@@ -252,7 +252,7 @@ namespace mongo {
 
         Slice val;
         Status status = _db->get(txn, key.key(), val);
-        massert(28546, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString(), status.isOK());
+        massert(28553, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString(), status.isOK());
 
         _updateStats(txn, -1, -val.size());
 
