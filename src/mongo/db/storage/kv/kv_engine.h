@@ -88,8 +88,16 @@ namespace mongo {
         virtual Status dropSortedDataInterface( OperationContext* opCtx,
                                                 const StringData& ident ) = 0;
 
+        virtual int64_t getIdentSize( OperationContext* opCtx,
+                                      const StringData& ident ) = 0;
+
+        virtual Status repairIdent( OperationContext* opCtx,
+                                    const StringData& ident ) = 0;
+
         // optional
         virtual int flushAllFiles( bool sync ) { return 0; }
+
+        virtual bool isDurable() const = 0;
 
         /**
          * This must not change over the lifetime of the engine.
@@ -103,6 +111,7 @@ namespace mongo {
                                    const RecordStore* originalRecordStore ) const {
             return Status::OK();
         }
+
     };
 
 }

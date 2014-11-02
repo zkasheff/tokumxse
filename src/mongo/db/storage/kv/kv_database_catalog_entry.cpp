@@ -51,17 +51,21 @@ namespace mongo {
     class KVDatabaseCatalogEntry::AddCollectionChange : public RecoveryUnit::Change {
     public:
         AddCollectionChange(OperationContext* opCtx, KVDatabaseCatalogEntry* dce,
-                            const StringData& collection, const StringData& ident)
+                            const StringData& collection, const StringData& ident,
+                            bool dropOnRollback)
             : _opCtx(opCtx)
             , _dce(dce)
             , _collection(collection.toString())
             , _ident(ident.toString())
+            , _dropOnRollback(dropOnRollback)
         {}
 
         virtual void commit() {}
         virtual void rollback() {
-            // Intentionally ignoring failure
-            _dce->_engine->getEngine()->dropRecordStore(_opCtx, _ident);
+            if (_dropOnRollback) {
+                // Intentionally ignoring failure
+                _dce->_engine->getEngine()->dropRecordStore(_opCtx, _ident);
+            }
 
             boost::mutex::scoped_lock lk(_dce->_collectionsLock);
             const CollectionMap::iterator it = _dce->_collections.find(_collection);
@@ -75,6 +79,7 @@ namespace mongo {
         KVDatabaseCatalogEntry* const _dce;
         const std::string _collection;
         const std::string _ident;
+        const bool _dropOnRollback;
     };
 
     class KVDatabaseCatalogEntry::RemoveCollectionChange : public RecoveryUnit::Change {
@@ -142,7 +147,16 @@ namespace mongo {
             if ( !coll )
                 continue;
             size += coll->getRecordStore()->storageSize( opCtx );
-            // todo: indexes
+
+            vector<string> indexNames;
+            coll->getAllIndexes( opCtx, &indexNames );
+
+            for ( size_t i = 0; i < indexNames.size(); i++ ) {
+                string ident = _engine->getCatalog()->getIndexIdent( opCtx,
+                                                                     coll->ns().ns(),
+                                                                     indexNames[i] );
+                size += _engine->getEngine()->getIdentSize( opCtx, ident );
+            }
         }
 
         return size;
@@ -151,7 +165,6 @@ namespace mongo {
     void KVDatabaseCatalogEntry::appendExtraStats( OperationContext* opCtx,
                                                    BSONObjBuilder* out,
                                                    double scale ) const {
-        // todo
     }
 
     bool KVDatabaseCatalogEntry::currentFilesCompatible( OperationContext* opCtx ) const {
@@ -248,7 +261,7 @@ namespace mongo {
         RecordStore* rs = _engine->getEngine()->getRecordStore( txn, ns, ident, options );
         invariant( rs );
         boost::mutex::scoped_lock lk( _collectionsLock );
-        txn->recoveryUnit()->registerChange(new AddCollectionChange(txn, this, ns, ident));
+        txn->recoveryUnit()->registerChange(new AddCollectionChange(txn, this, ns, ident, true));
         _collections[ns.toString()] =
             new KVCollectionCatalogEntry( _engine->getEngine(), _engine->getCatalog(),
                                           ns, ident, rs );
@@ -317,7 +330,8 @@ namespace mongo {
                                                                        itFrom->second, false));
         _collections.erase(itFrom);
 
-        txn->recoveryUnit()->registerChange(new AddCollectionChange(txn, this, toNS, identTo));
+        txn->recoveryUnit()->registerChange(
+            new AddCollectionChange(txn, this, toNS, identTo, false));
         _collections[toNS.toString()] =
             new KVCollectionCatalogEntry( _engine->getEngine(), _engine->getCatalog(),
                                           toNS, identTo, rs );

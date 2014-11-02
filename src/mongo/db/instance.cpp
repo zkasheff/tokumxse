@@ -45,6 +45,7 @@
 #include "mongo/db/commands/fsync.h"
 #include "mongo/db/concurrency/d_concurrency.h"
 #include "mongo/db/concurrency/deadlock.h"
+#include "mongo/db/currentop_command.h"
 #include "mongo/db/db.h"
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/dbhelpers.h"
@@ -133,73 +134,6 @@ namespace {
     string dbExecCommand;
 
     MONGO_FP_DECLARE(rsStopGetMore);
-
-    static void inProgCmd(OperationContext* txn, Message &m, DbResponse &dbresponse) {
-        DbMessage d(m);
-        QueryMessage q(d);
-        BSONObjBuilder b;
-
-        const bool isAuthorized = txn->getClient()->getAuthorizationSession()->isAuthorizedForActionsOnResource(
-                ResourcePattern::forClusterResource(), ActionType::inprog);
-
-        audit::logInProgAuthzCheck(
-                txn->getClient(), q.query, isAuthorized ? ErrorCodes::OK : ErrorCodes::Unauthorized);
-
-        if (!isAuthorized) {
-            b.append("err", "unauthorized");
-        }
-        else {
-            bool all = q.query["$all"].trueValue();
-            vector<BSONObj> vals;
-            {
-                BSONObj filter;
-                {
-                    BSONObjBuilder b;
-                    BSONObjIterator i( q.query );
-                    while ( i.more() ) {
-                        BSONElement e = i.next();
-                        if ( str::equals( "$all", e.fieldName() ) )
-                            continue;
-                        b.append( e );
-                    }
-                    filter = b.obj();
-                }
-
-                const NamespaceString nss(d.getns());
-
-                Client& me = *txn->getClient();
-                scoped_lock bl(Client::clientsMutex);
-                Matcher m(filter, WhereCallbackReal(txn, nss.db()));
-                for( set<Client*>::iterator i = Client::clients.begin(); i != Client::clients.end(); i++ ) {
-                    Client *c = *i;
-                    verify( c );
-                    CurOp* co = c->curop();
-                    if ( c == &me && !co ) {
-                        continue;
-                    }
-                    verify( co );
-                    if( all || co->displayInCurop() ) {
-                        BSONObjBuilder infoBuilder;
-
-                        c->reportState(infoBuilder);
-                        co->reportState(&infoBuilder);
-
-                        const BSONObj info = infoBuilder.obj();
-                        if ( all || m.matches( info )) {
-                            vals.push_back( info );
-                        }
-                    }
-                }
-            }
-            b.append("inprog", vals);
-            if( lockedForWriting() ) {
-                b.append("fsyncLock", true);
-                b.append("info", "use db.fsyncUnlock() to terminate the fsync write/snapshot lock");
-            }
-        }
-
-        replyToQuery(0, m, dbresponse, b.obj());
-    }
 
     void killOp( OperationContext* txn, Message &m, DbResponse &dbresponse ) {
         DbMessage d(m);
@@ -725,14 +659,17 @@ namespace {
                 DeleteExecutor executor(&request);
                 uassertStatusOK(executor.prepare());
 
-                Lock::DBLock dbLocklk(txn->lockState(), ns.db(), MODE_IX);
+                AutoGetDb autoDb(txn, ns.db(), MODE_IX);
+                if (!autoDb.getDb()) break;
+
                 Lock::CollectionLock colLock(txn->lockState(), ns.ns(), MODE_IX);
                 Client::Context ctx(txn, ns);
 
                 long long n = executor.execute(ctx.db());
                 lastError.getSafe()->recordDelete( n );
                 op.debug().ndeleted = n;
-                return;
+
+                break;
             }
             catch ( const DeadLockException& dle ) {
                 log(LogComponent::kWrites) << "got deadlock doing delete on " << ns

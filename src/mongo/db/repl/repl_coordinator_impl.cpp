@@ -674,6 +674,19 @@ namespace {
         return Status::OK();
     }
 
+    void ReplicationCoordinatorImpl::setMyHeartbeatMessage(const std::string& msg) {
+        CBHStatus cbh = _replExecutor.scheduleWork(
+            stdx::bind(&TopologyCoordinator::setMyHeartbeatMessage,
+                       _topCoord.get(),
+                       _replExecutor.now(),
+                       msg));
+        if (cbh.getStatus() == ErrorCodes::ShutdownInProgress) {
+            return;
+        }
+        fassert(28540, cbh.getStatus());
+        _replExecutor.wait(cbh.getValue());
+    }
+
     Status ReplicationCoordinatorImpl::setMyLastOptime(OperationContext* txn, const OpTime& ts) {
         boost::unique_lock<boost::mutex> lock(_mutex);
         _setMyLastOptime_inlock(&lock, ts);
@@ -1611,7 +1624,8 @@ namespace {
                 _settings.ourSetName(),
                 getMyLastOptime(),
                 response);
-        if (outStatus->isOK() && _thisMembersConfigIndex < 0) {
+        if ((outStatus->isOK() || *outStatus == ErrorCodes::InvalidReplicaSetConfig) &&
+                _thisMembersConfigIndex < 0) {
             // If this node does not belong to the configuration it knows about, send heartbeats
             // back to any node that sends us a heartbeat, in case one of those remote nodes has
             // a configuration that contains us.  Chances are excellent that it will, since that

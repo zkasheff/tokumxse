@@ -159,8 +159,10 @@ namespace {
             invariant(_forceSyncSourceIndex < _currentConfig.getNumMembers());
             _syncSource = _currentConfig.getMemberAt(_forceSyncSourceIndex).getHostAndPort();
             _forceSyncSourceIndex = -1;
-            _sethbmsg(str::stream() << "syncing from: " << _syncSource.toString() << " by request",
-                      0);
+            std::string msg(str::stream() << "syncing from: "
+                                          << _syncSource.toString() << " by request");
+            log() << msg << rsLog;
+            setMyHeartbeatMessage(now, msg);
             return _syncSource;
         }
 
@@ -184,7 +186,10 @@ namespace {
             }
             else {
                 _syncSource = _currentConfig.getMemberAt(_currentPrimaryIndex).getHostAndPort();
-                _sethbmsg(str::stream() << "syncing from primary: " << _syncSource.toString(), 0);
+                std::string msg(str::stream() << "syncing from primary: "
+                                              << _syncSource.toString());
+                log() << msg << rsLog;
+                setMyHeartbeatMessage(now, msg);
                 return _syncSource;
             }
         }
@@ -295,15 +300,17 @@ namespace {
 
         if (closestIndex == -1) {
             // Did not find any members to sync from
-            _sethbmsg(str::stream() << "could not find member to sync from", 0);
+            std::string msg("could not find member to sync from");
+            log() << msg << rsLog;
+            setMyHeartbeatMessage(now, msg);
 
             _syncSource = HostAndPort();
             return _syncSource;
         }
         _syncSource = _currentConfig.getMemberAt(closestIndex).getHostAndPort();
         std::string msg(str::stream() << "syncing from: " << _syncSource.toString(), 0);
-        _sethbmsg(msg);
-        log() << msg;
+        log() << msg << rsLog;
+        setMyHeartbeatMessage(now, msg);
         return _syncSource;
     }
 
@@ -628,7 +635,15 @@ namespace {
                           "Our set name of " << ourSetName << " does not match name " << rshb <<
                           " reported by remote node");
         }
-        if (_selfIndex != -1) {
+
+        const MemberState myState = getMemberState();
+        if (_selfIndex == -1) {
+            if (myState.removed()) {
+                return Status(ErrorCodes::InvalidReplicaSetConfig,
+                              "Our replica set configuration is invalid or does not include us");
+            }
+        }
+        else {
             invariant(_currentConfig.getReplSetName() == args.getSetName());
             if (args.getSenderId() == _selfConfig().getId()) {
                 return Status(ErrorCodes::BadValue,
@@ -640,8 +655,6 @@ namespace {
         // This is a replica set
         response->noteReplSet();
         response->setSetName(ourSetName);
-
-        const MemberState myState = getMemberState();
         response->setState(myState.s);
         if (myState.primary()) {
             response->setElectionTime(_electionTime);
@@ -651,7 +664,7 @@ namespace {
         response->setElectable(!_getMyUnelectableReason(now, lastOpApplied));
 
         // Heartbeat status message
-        response->setHbMsg(_getHbmsg());
+        response->setHbMsg(_getHbmsg(now));
         response->setTime(Seconds(Milliseconds(now.asInt64()).total_seconds()));
         response->setOpTime(lastOpApplied.asDate());
 
@@ -990,7 +1003,7 @@ namespace {
                     return HeartbeatResponseAction::makeNoAction();
                 }
                 // Clear last heartbeat message on ourselves (why?)
-                _sethbmsg("");
+                setMyHeartbeatMessage(now, "");
 
                 // If we are also primary, this is a problem.  Determine who should step down.
                 if (_iAmPrimary()) {
@@ -1243,6 +1256,24 @@ namespace {
         vector<BSONObj> membersOut;
         const MemberState myState = getMemberState();
 
+        if (_selfIndex == -1) {
+            // We're REMOVED or have an invalid config
+            response->append("state", static_cast<int>(myState.s));
+            response->append("stateStr", myState.toString());
+            response->append("uptime", selfUptime);
+            response->append("optime", lastOpApplied);
+            response->appendDate("optimeDate", Date_t(lastOpApplied.getSecs() * 1000ULL));
+            if (_maintenanceModeCalls) {
+                response->append("maintenanceMode", _maintenanceModeCalls);
+            }
+            std::string s = _getHbmsg(now);
+            if( !s.empty() )
+                response->append("infoMessage", s);
+            *result = Status(ErrorCodes::InvalidReplicaSetConfig,
+                             "Our replica set config is invalid or we are not a member of it");
+            return;
+        }
+
         for (std::vector<MemberHeartbeatData>::const_iterator it = _hbdata.begin(); 
              it != _hbdata.end(); 
              ++it) {
@@ -1253,9 +1284,8 @@ namespace {
                 bb.append("_id", _selfConfig().getId());
                 bb.append("name", _selfConfig().getHostAndPort().toString());
                 bb.append("health", 1.0);
-                const MemberState state = getMemberState();
-                bb.append("state", static_cast<int>(state.s));
-                bb.append("stateStr", state.toString());
+                bb.append("state", static_cast<int>(myState.s));
+                bb.append("stateStr", myState.toString());
                 bb.append("uptime", selfUptime);
                 if (!_selfConfig().isArbiter()) {
                     bb.append("optime", lastOpApplied);
@@ -1270,14 +1300,15 @@ namespace {
                     bb.append("maintenanceMode", _maintenanceModeCalls);
                 }
 
-                std::string s = _getHbmsg();
+                std::string s = _getHbmsg(now);
                 if( !s.empty() )
                     bb.append("infoMessage", s);
 
-                if (state.primary()) {
+                if (myState.primary()) {
                     bb.append("electionTime", _electionTime);
                     bb.appendDate("electionDate", Date_t(_electionTime.getSecs() * 1000ULL));
                 }
+                bb.appendIntOrLL("configVersion", _currentConfig.getConfigVersion());
                 bb.append("self", true);
                 membersOut.push_back(bb.obj());
             }
@@ -1329,6 +1360,7 @@ namespace {
                     bb.appendDate("electionDate",
                                   Date_t(it->getElectionTime().getSecs() * 1000ULL));
                 }
+                bb.appendIntOrLL("configVersion", it->getConfigVersion());
                 membersOut.push_back(bb.obj());
             }
         }
@@ -1566,23 +1598,18 @@ namespace {
             _role = Role::candidate;
         }
     }
-
-    // TODO(emilkie): Better story for heartbeat message handling.
-    void TopologyCoordinatorImpl::_sethbmsg(const std::string& s, int logLevel) {
-        static time_t lastLogged;
-        _hbmsgTime = time(0);
-
-        if (s == _hbmsg) {
-            // unchanged
-            if (_hbmsgTime - lastLogged < 60)
-                return;
+    std::string TopologyCoordinatorImpl::_getHbmsg(Date_t now) const {
+        // ignore messages over 2 minutes old
+        if ((now - _hbmsgTime) > 120) {
+            return "";
         }
+        return _hbmsg;
+    }
 
-        _hbmsg = s;
-        if (!s.empty()) {
-            lastLogged = _hbmsgTime;
-            LOG(logLevel) << "replSet " << s;
-        }
+    void TopologyCoordinatorImpl::setMyHeartbeatMessage(const Date_t now,
+                                                        const std::string& message) {
+        _hbmsgTime = now;
+        _hbmsg = message;
     }
 
     const MemberConfig& TopologyCoordinatorImpl::_selfConfig() const {
@@ -1644,7 +1671,9 @@ namespace {
                 _lastVote.when.millis + LastVote::leaseTime.total_milliseconds() >= now.millis) {
             result |= VotedTooRecently;
         }
-        if (!getMemberState().secondary()) {
+
+        // Cannot be electable unless secondary or already primary
+        if (!getMemberState().secondary() && !_iAmPrimary()) {
             result |= NotSecondary;
         }
         if (!_isOpTimeCloseEnoughToLatestToElect(lastApplied, lastApplied)) {

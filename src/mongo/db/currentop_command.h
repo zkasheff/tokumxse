@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2008 10gen Inc.
+ *    Copyright (C) 2014 MongoDB Inc.
  *
  *    This program is free software: you can redistribute it and/or  modify
  *    it under the terms of the GNU Affero General Public License, version 3,
@@ -28,21 +28,16 @@
 
 #pragma once
 
-#include <deque>
-#include <vector>
-
-#include "mongo/db/client.h"
-#include "mongo/db/storage/mmap_v1/dur.h"
-#include "mongo/db/jsobj.h"
-#include "mongo/db/repl/initial_sync.h"
-#include "mongo/db/repl/sync.h"
-#include "mongo/db/repl/sync_tail.h"
-#include "mongo/util/concurrency/thread_pool.h"
-
 namespace mongo {
-namespace repl {
-    // Body of the thread that will do the background sync.
-    void runSyncThread();
 
-} // namespace repl
+    struct DbResponse;
+    class Message;
+    class OperationContext;
+
+    /**
+     * Executes the db.currentOp() command. Currently not an actual "command" object, but should
+     * be converted to one at some point.
+     */
+    void inProgCmd(OperationContext* txn, Message &m, DbResponse &dbresponse);
+
 } // namespace mongo
