@@ -144,7 +144,7 @@ namespace {
                                      const StringData& ns,
                                      const CollectionOptions& options ) {
         boost::scoped_ptr<Lock::ResourceLock> rLk;
-        if (!_isRsThreadSafe && opCtx->lockState())
+        if (!_isRsThreadSafe)
             rLk.reset(new Lock::ResourceLock(opCtx->lockState(), catalogRID, MODE_X));
 
         const string ident = _newUniqueIdent("collection");
@@ -198,7 +198,7 @@ namespace {
                                    DiskLoc* out ) const {
 
         boost::scoped_ptr<Lock::ResourceLock> rLk;
-        if (!_isRsThreadSafe && opCtx->lockState())
+        if (!_isRsThreadSafe)
             rLk.reset(new Lock::ResourceLock(opCtx->lockState(), catalogRID, MODE_S));
 
         DiskLoc dl;
