@@ -585,21 +585,7 @@ namespace repl {
                 else {
                     IndexBuilder builder(o);
                     Status status = builder.buildInForeground(txn, db);
-                    if ( status.isOK() ) {
-                        // yay
-                    }
-                    else if ( status.code() == ErrorCodes::IndexOptionsConflict ||
-                              status.code() == ErrorCodes::IndexKeySpecsConflict ) {
-                        // SERVER-13206, SERVER-13496
-                        // 2.4 (and earlier) will add an ensureIndex to an oplog if its ok or not
-                        // so in 2.6+ where we do stricter validation, it will fail
-                        // but we shouldn't care as the primary is responsible
-                        warning() << "index creation attempted on secondary that conflicts, "
-                                  << "skipping: " << status;
-                    }
-                    else {
-                        uassertStatusOK( status );
-                    }
+                    uassertStatusOK(status);
                 }
             }
             else {
@@ -627,20 +613,6 @@ namespace repl {
                     }
                 }
                 else {
-                    // probably don't need this since all replicated colls have _id indexes now
-                    // but keep it just in case
-                    RARELY if ( indexCatalog
-                                 && !collection->isCapped()
-                                 && !indexCatalog->haveIdIndex(txn) ) {
-                        try {
-                            Helpers::ensureIndex(txn, collection, BSON("_id" << 1), true, "_id_");
-                        }
-                        catch (const DBException& e) {
-                            warning() << "Ignoring error building id index on " << collection->ns()
-                                      << ": " << e.toString();
-                        }
-                    }
-
                     /* todo : it may be better to do an insert here, and then catch the dup key exception and do update
                               then.  very few upserts will not be inserts...
                               */
@@ -663,18 +635,6 @@ namespace repl {
         }
         else if ( *opType == 'u' ) {
             opCounters->gotUpdate();
-
-            // probably don't need this since all replicated colls have _id indexes now
-            // but keep it just in case
-            RARELY if ( indexCatalog && !collection->isCapped() && !indexCatalog->haveIdIndex(txn) ) {
-                try {
-                    Helpers::ensureIndex(txn, collection, BSON("_id" << 1), true, "_id_");
-                }
-                catch (const DBException& e) {
-                    warning() << "Ignoring error building id index on " << collection->ns()
-                              << ": " << e.toString();
-                }
-            }
 
             OpDebug debug;
             BSONObj updateCriteria = o2;

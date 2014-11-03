@@ -74,6 +74,7 @@
 #include "mongo/db/startup_warnings_mongod.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/stats/snapshots.h"
+#include "mongo/db/storage/mmap_v1/mmap_v1_options.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/db/ttl.h"
@@ -449,6 +450,26 @@ namespace mongo {
                     boost::filesystem::exists(storageGlobalParams.repairpath));
         }
 
+        // Disallow configurations for multiple registered storage engines in
+        // the same configuration file/environment.
+        {
+            BSONElement storageElement = serverGlobalParams.parsedOpts.getField("storage");
+            invariant(storageElement.isABSONObj());
+            BSONObj storageParamsObj = storageElement.Obj();
+            BSONObjIterator i = storageParamsObj.begin();
+            while (i.more()) {
+                BSONElement e = i.next();
+                // Ignore if field name under "storage" matches current storage engine.
+                if (storageGlobalParams.engine == e.fieldName()) continue;
+                // Raise an error if field name matches non-active registered storage engine.
+                if (getGlobalEnvironment()->isRegisteredStorageEngine(e.fieldName())) {
+                    uasserted(28547, str::stream()
+                        << "Detected configuration for non-active storage engine " << e.fieldName()
+                        << " when current storage engine is " << storageGlobalParams.engine);
+                }
+            }
+        }
+
         // Due to SERVER-15389, we must setupSockets first thing at startup in order to avoid
         // obtaining too high a file descriptor for our calls to select().
         MessageServer::Options options;
@@ -472,7 +493,7 @@ namespace mongo {
 
         boost::filesystem::remove_all(storageGlobalParams.dbpath + "/_tmp/");
 
-        if (storageGlobalParams.durOptions & StorageGlobalParams::DurRecoverOnly)
+        if (mmapv1GlobalOptions.journalOptions & MMAPV1Options::JournalRecoverOnly)
             return;
 
         if (mongodGlobalParams.scriptingEnabled) {
