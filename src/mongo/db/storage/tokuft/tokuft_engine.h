@@ -30,10 +30,6 @@
 
 #pragma once
 
-#include <boost/thread/condition_variable.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread.hpp>
-
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 
 #include <ftcxx/db_env.hpp>
@@ -92,19 +88,9 @@ namespace mongo {
             return _metadataDict.get();
         }
 
-        void logFlushThread();
-
     private:
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;
-
-        scoped_ptr<boost::thread> _lfThread;
-
-        // for shutting down the log_flush thread
-        boost::mutex _lfMutex;
-        boost::condition_variable _lfCond;
-        bool _lfRunning;
-        bool _lfFinished;
     };
 
 } // namespace mongo

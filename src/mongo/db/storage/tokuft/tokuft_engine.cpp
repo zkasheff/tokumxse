@@ -35,12 +35,7 @@
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
-#include "mongo/db/storage_options.h"
-#include "mongo/stdx/functional.h"
 #include "mongo/util/log.h"
-#include "mongo/util/mongoutils/str.h"
-#include "mongo/util/processinfo.h"
-#include "mongo/util/time_support.h"
 
 #include <ftcxx/db_env.hpp>
 #include <ftcxx/db_env-inl.hpp>
@@ -79,9 +74,7 @@ namespace mongo {
 
     TokuFTEngine::TokuFTEngine(const std::string &path)
         : _env(nullptr),
-          _metadataDict(nullptr),
-          _lfRunning(true),
-          _lfFinished(false)
+          _metadataDict(nullptr)
     {
         ProcessInfo pi;
         unsigned long long memSizeMB = pi.getMemSizeMB();
@@ -92,16 +85,15 @@ namespace mongo {
         log() << "TokuFT: opening environment at " << path << std::endl;
         _env = ftcxx::DBEnvBuilder()
             // TODO: Direct I/O
-            // TODO: Lock wait timeout callback, lock killed callback,
-            //       Fsync log period, redzone, logdir, etc
-            // TODO: Checkpoint period, cleaner period
+            // TODO: Lock wait timeout callback, lock killed callback
+            // TODO: redzone, logdir
+            // TODO: cleaner period, cleaner iterations
             .set_cachesize(cacheSizeGB, cacheSizeB)
             .checkpointing_set_period(60)
+            .change_fsync_log_period(100),
             .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
             .set_update(&ftcxx::wrapped_updater<tokuft_update>)
             .open(path.c_str(), env_flags, env_mode);
-
-        _lfThread.reset(new boost::thread(stdx::bind(std::mem_fn(&TokuFTEngine::logFlushThread), this)));
 
         ftcxx::DBTxn txn(_env);
         _metadataDict.reset(new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp()));
@@ -111,20 +103,7 @@ namespace mongo {
     TokuFTEngine::~TokuFTEngine() {
         invariant(_env.env() != NULL);
 
-        {
-            boost::unique_lock<boost::mutex> lk(_lfMutex);
-            _lfRunning = false;
-            _lfCond.notify_one();
-        }
-
-        {
-            boost::unique_lock<boost::mutex> lk(_lfMutex);
-            while (!_lfFinished) {
-                _lfCond.wait(lk);
-            }
-        }
-
-        log() << "TokuFT: shutdown" << std::endl;
+        log() << "tokuft-engine: shutdown" << std::endl;
     }
 
     static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
@@ -167,53 +146,6 @@ namespace mongo {
         }
         invariant(r == 0);
         return Status::OK();
-    }
-
-    void TokuFTEngine::logFlushThread() {
-        int numConsecutiveExceptions = 0;
-
-        for (;;) {
-            const unsigned ms = 100; //storageGlobalParams.journalCommitInterval; // <-- this is a pain to link in tests
-
-            try {
-                {
-                    boost::unique_lock<boost::mutex> lk(_lfMutex);
-                    _lfCond.timed_wait(lk, Milliseconds(ms));
-                    if (!_lfRunning) {
-                        break;
-                    }
-                }
-
-                _env.log_flush();
-
-                numConsecutiveExceptions = 0;
-            } catch (std::exception &e) {
-                ++numConsecutiveExceptions;
-
-                std::string errmsg = str::stream() << "TokuFT: Log flush thread caught exception: " << e.what();
-                std::string countmsg = str::stream() << "TokuFT: Log flush thread got " << numConsecutiveExceptions << " consecutive exceptions.";
-
-                if (numConsecutiveExceptions > 10) {
-                    severe() << errmsg << std::endl;
-                    severe() << countmsg << std::endl;
-                    severe() << "TokuFT: This is unacceptable.  Crashing the server to avoid further damage." << std::endl;
-                    fassertFailed(28547);
-                } else if (numConsecutiveExceptions > 5) {
-                    error() << errmsg << std::endl;
-                    error() << countmsg << std::endl;
-                } else if (numConsecutiveExceptions > 1) {
-                    warning() << errmsg << std::endl;
-                    warning() << countmsg << std::endl;
-                } else {
-                    log() << errmsg << std::endl;
-                }
-            }
-        }
-        log() << "TokuFT: log flush thread exiting" << std::endl;
-
-        boost::unique_lock<boost::mutex> lk(_lfMutex);
-        _lfFinished = true;
-        _lfCond.notify_one();
     }
 
 } // namespace mongo
