@@ -28,25 +28,25 @@
 
 #pragma once
 
-#include "mongo/db/concurrency/locker.h"
+#include "mongo/base/status.h"
+#include "mongo/base/status_with.h"
 
 namespace mongo {
+    class DiskLoc;
+    class OpTime;
 
-    class RecordFetcher;
+namespace oploghack {
 
     /**
-     * See the documentation for yieldAllLocks(...).
+     * Converts OpTime to a DiskLoc in an unspecified manor that is safe to use as the key to in a
+     * RecordStore.
      */
-    class Yield {
-        MONGO_DISALLOW_COPYING(Yield);
-    public:
-        /**
-         * If not in a nested context, unlocks all locks, suggests to the operating system to
-         * switch to another thread, and then reacquires all locks.
-         *
-         * If in a nested context (eg DBDirectClient), does nothing.
-         */
-        static void yieldAllLocks(OperationContext* txn, int micros, RecordFetcher* fetcher = NULL);
-    };
+    StatusWith<DiskLoc> keyForOptime(const OpTime& opTime);
 
-} // namespace mongo
+    /**
+     * data and len must be the arguments from RecordStore::insert() on an oplog collection.
+     */
+    StatusWith<DiskLoc> extractKey(const char* data, int len);
+
+}  // namespace oploghack
+}  // namespace mongo
