@@ -76,7 +76,7 @@ namespace mongo {
         if (r == DB_KEYEXIST) {
             return Status(ErrorCodes::DuplicateKey, errmsg);
         } else if (r == DB_LOCK_DEADLOCK) {
-            return Status(ErrorCodes::DeadLock, errmsg);
+            return Status(ErrorCodes::WriteConflict, errmsg);
         } else if (r == DB_LOCK_NOTGRANTED) {
             return Status(ErrorCodes::LockTimeout, errmsg);
         } else if (r == DB_NOTFOUND) {

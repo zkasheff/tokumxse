@@ -184,9 +184,9 @@ namespace mongo {
 
     void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
         Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
-        massert(28550, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
+        invariant(s.isOK());
         s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
-        massert(28551, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString(), s.isOK());
+        invariant(s.isOK());
     }
 
     long long KVRecordStore::dataSize( OperationContext* txn ) const {

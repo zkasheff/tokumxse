@@ -36,6 +36,8 @@
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/log.h"
+#include "mongo/util/mongoutils/str.h"
+#include "mongo/util/processinfo.h"
 
 #include <ftcxx/db_env.hpp>
 #include <ftcxx/db_env-inl.hpp>
@@ -90,7 +92,7 @@ namespace mongo {
             // TODO: cleaner period, cleaner iterations
             .set_cachesize(cacheSizeGB, cacheSizeB)
             .checkpointing_set_period(60)
-            .change_fsync_log_period(100),
+            .change_fsync_log_period(100)
             .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
             .set_update(&ftcxx::wrapped_updater<tokuft_update>)
             .open(path.c_str(), env_flags, env_mode);
