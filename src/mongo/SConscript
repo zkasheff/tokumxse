@@ -961,14 +961,12 @@ serveronlyLibdeps = ["coreshard",
 if has_option("rocksdb" ):
     serveronlyLibdeps.append( 'db/storage/rocks/storage_rocks' )
 
-<<<<<<< HEAD
 if has_option("tokuft"):
     serveronlyLibdeps.append( 'db/storage/tokuft/storage_tokuft' )
-=======
+
 if wiredtiger:
     serveronlyLibdeps.append( 'db/storage/wiredtiger/storage_wiredtiger' )
     serveronlyLibdeps.append( '$BUILD_DIR/third_party/shim_wiredtiger')
->>>>>>> 918663879caa0e6345d2e37d25bbe27bab1cc504
 
 serveronlyEnv.Library("serveronly", serverOnlyFiles,
                       LIBDEPS=serveronlyLibdeps )
