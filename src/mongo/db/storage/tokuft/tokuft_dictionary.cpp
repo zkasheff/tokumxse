@@ -64,7 +64,7 @@ namespace mongo {
     static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
         TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
         invariant(ru != NULL);
-        return ru->txn();
+        return ru->txn(opCtx);
     }
 
     static Status error2status(int r) {
@@ -167,29 +167,35 @@ namespace mongo {
     }
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
-        : _cur(dict.db().buffered_cursor(ftcxx::DBTxn(), // no concurrency yet, _getDBTxn(txn),
+        : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
                                          dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
-    {}
+    {
+        advance(txn);
+    }
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction)
-        : _cur(dict.db().buffered_cursor(ftcxx::DBTxn(), // no concurrency yet, _getDBTxn(txn),
+        : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
                                          ftcxx::Slice(leftKey.data(), leftKey.size()), ftcxx::Slice(rightKey.data(), rightKey.size()),
                                          dict.comparator(), ftcxx::DB::NullFilter(),
                                          0, (direction == 1), false, true)),
           _currKey(), _currVal(), _ok(false)
-    {}
+    {
+        advance(txn);
+    }
 
     bool TokuFTDictionary::Cursor::ok() const {
         return _ok;
     }
 
-    void TokuFTDictionary::Cursor::seek(const Slice &key) {
+    void TokuFTDictionary::Cursor::seek(OperationContext *opCtx, const Slice &key) {
+        _cur.set_txn(_getDBTxn(opCtx));
         _cur.seek(slice2ftslice(key));
-        advance();
+        advance(opCtx);
     }
 
-    void TokuFTDictionary::Cursor::advance() {
+    void TokuFTDictionary::Cursor::advance(OperationContext *opCtx) {
+        _cur.set_txn(_getDBTxn(opCtx));
         ftcxx::Slice key, val;
         _ok = _cur.next(key, val);
         if (_ok) {

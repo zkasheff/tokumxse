@@ -30,6 +30,7 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/util/log.h"
 
 #include <ftcxx/db_env.hpp>
@@ -45,14 +46,10 @@ namespace mongo {
     TokuFTRecoveryUnit::~TokuFTRecoveryUnit() {
         invariant(_depth == 0);
         invariant(_changes.size() == 0);
-        invariant(_txn.txn() == NULL);
     }
 
     void TokuFTRecoveryUnit::beginUnitOfWork() {
-        if (_depth++ == 0) {
-            invariant(_txn.txn() == NULL);
-            _txn = ftcxx::DBTxn(_env, DB_SERIALIZABLE);
-        }
+        _depth++;
     }
 
     void TokuFTRecoveryUnit::commitUnitOfWork() {
@@ -68,16 +65,20 @@ namespace mongo {
         }
         _changes.clear();
 
-        invariant(_txn.txn() != NULL);
-        _txn.commit(DB_TXN_NOSYNC);
-        _txn = ftcxx::DBTxn(_env, DB_SERIALIZABLE);
+        if (_txn.txn() != NULL) {
+            _txn.commit(DB_TXN_NOSYNC);
+        }
+        _txn = ftcxx::DBTxn();
     }
 
     void TokuFTRecoveryUnit::commitAndRestart() {
         invariant(_depth == 0);
         invariant(_changes.size() == 0);
-        invariant(_txn.txn() == NULL);
-        // no-op since we have no transaction
+
+        if (_txn.txn() != NULL) {
+            _txn.commit(DB_TXN_NOSYNC);
+        }
+        _txn = ftcxx::DBTxn();
     }
 
     void TokuFTRecoveryUnit::endUnitOfWork() {
@@ -93,8 +94,6 @@ namespace mongo {
         }
         _changes.clear();
 
-        invariant(_txn.txn() != NULL);
-        _txn.abort();
         _txn = ftcxx::DBTxn();
     }
 
@@ -122,6 +121,33 @@ namespace mongo {
     void *TokuFTRecoveryUnit::writingPtr(void *data, size_t len) {
         log() << "tokuft-engine: writingPtr does nothing" << std::endl;
         return data;
+    }
+
+    bool TokuFTRecoveryUnit::_opCtxIsWriting(OperationContext *opCtx) {
+        const Locker *state = opCtx->lockState();
+        const LockMode mode =
+                (state == NULL
+                 // Only for c++ tests, assume tests can do whatever without proper locks.
+                 ? MODE_X
+                 // We don't have the ns so just check the global resource, generally it should have
+                 // the IX or IS lock.
+                 : state->getLockMode(ResourceId(RESOURCE_GLOBAL, 1ULL)));
+        return mode == MODE_IX || mode == MODE_X;
+    }
+
+    const ftcxx::DBTxn &TokuFTRecoveryUnit::txn(OperationContext *opCtx) {
+        if (_txn.txn() == NULL) {
+            // No txn exists yet, create one on-demand.
+            // If locked for write, get a serializable txn, otherwise get a read-only one.
+            int flags;
+            if (_opCtxIsWriting(opCtx)) {
+                flags = DB_SERIALIZABLE;
+            } else {
+                flags = DB_TXN_SNAPSHOT | DB_TXN_READ_ONLY;
+            }
+            _txn = ftcxx::DBTxn(_env, flags);
+        }
+        return _txn;
     }
 
 }  // namespace mongo

@@ -111,7 +111,7 @@ namespace mongo {
     static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
         TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
         invariant(ru != NULL);
-        return ru->txn();
+        return ru->txn(opCtx);
     }
 
     RecoveryUnit *TokuFTEngine::newRecoveryUnit() {

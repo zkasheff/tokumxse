@@ -91,9 +91,9 @@ namespace mongo {
 
             virtual bool ok() const;
 
-            virtual void seek(const Slice &key);
+            virtual void seek(OperationContext *opCtx, const Slice &key);
 
-            virtual void advance();
+            virtual void advance(OperationContext *opCtx);
 
             virtual Slice currKey() const;
 

@@ -39,6 +39,7 @@
 
 namespace mongo {
 
+    class OperationContext;
     class TokuFTStorageEngine;
 
     class TokuFTRecoveryUnit : public RecoveryUnit {
@@ -76,6 +77,8 @@ namespace mongo {
         int _depth;
         Changes _changes;
 
+        static bool _opCtxIsWriting(OperationContext *opCtx);
+
     public:
         // -- TokuFT Specific
 
@@ -83,9 +86,7 @@ namespace mongo {
             return _txn.txn();
         }
 
-        const ftcxx::DBTxn &txn() const {
-            return _txn;
-        }
+        const ftcxx::DBTxn &txn(OperationContext *opCtx);
     };
 
 }  // namespace mongo
