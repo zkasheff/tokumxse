@@ -136,10 +136,9 @@ namespace mongo {
         invariant(_db != NULL);
 
         // Get the next id, which is one greater than the greatest stored.
-        boost::scoped_ptr<KVDictionary::Cursor> cursor(db->getCursor(opCtx, -1));
-        if (cursor->ok()) {
-            const RecordIdKey lastKey(cursor->currKey());
-            const DiskLoc lastLoc = lastKey.loc();
+        boost::scoped_ptr<RecordIterator> iter(getIterator(opCtx, DiskLoc(), CollectionScanParams::BACKWARD));
+        if (!iter->isEOF()) {
+            const DiskLoc lastLoc = iter->curr();
             _nextIdNum.store(lastLoc.getOfs() + (uint64_t(lastLoc.a()) << 32ULL) + 1);
         } else {
             // Need to start at 1 so we are always higher than minDiskLoc
@@ -150,7 +149,7 @@ namespace mongo {
     int64_t KVRecordStore::_getStats(OperationContext *opCtx, const std::string &key) const {
         Slice valSlice;
         Status s = _metadataDict->get(opCtx, Slice(key), valSlice);
-        massert(28548, str::stream() << "KVRecordStore: error getting stats: " << s.toString(), s.isOK());
+        massert(28557, str::stream() << "KVRecordStore: error getting stats: " << s.toString(), s.isOK());
         return mongo::endian::littleToNative(valSlice.as<int64_t>());
     }
 
@@ -159,11 +158,11 @@ namespace mongo {
             WriteUnitOfWork wuow(opCtx);
             KVUpdateIncrementMessage nrMessage(numRecordsDelta);
             Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
-            massert(28540, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString(), s.isOK());
+            massert(28558, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString(), s.isOK());
 
             KVUpdateIncrementMessage dsMessage(dataSizeDelta);
             s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
-            massert(28541, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString(), s.isOK());
+            massert(28559, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString(), s.isOK());
             wuow.commit();
         }
     }
@@ -189,7 +188,7 @@ namespace mongo {
     void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
         WriteUnitOfWork wuow(opCtx);
         Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
-        massert(28542, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
+        massert(28560, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
         s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
         massert(28543, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString(), s.isOK());
         wuow.commit();
@@ -258,7 +257,7 @@ namespace mongo {
 
         Slice val;
         Status status = _db->get(txn, key.key(), val);
-        massert(28546, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString(), status.isOK());
+        massert(28561, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString(), status.isOK());
 
         _updateStats(txn, -1, -val.size());
 
@@ -273,6 +272,13 @@ namespace mongo {
         const DiskLoc loc = _nextId();
         const RecordIdKey key(loc);
         const Slice value(data, len);
+
+        DEV {
+            // Should never overwrite an existing record.
+            Slice v;
+            const Status status = _db->get(txn, key.key(), v);
+            invariant(status.code() == ErrorCodes::NoSuchKey);
+        }
 
         const Status status = _db->insert(txn, key.key(), value);
         if (!status.isOK()) {
@@ -460,7 +466,7 @@ namespace mongo {
         invariant(loc.isValid() && !loc.isNull());
         const RecordIdKey key(loc);
         _cursor.reset(_db->getCursor(_txn, _dir));
-        _cursor->seek(key.key());
+        _cursor->seek(_txn, key.key());
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
@@ -507,7 +513,7 @@ namespace mongo {
         // We need valid copies of _savedLoc / _savedVal since we are
         // about to advance the underlying cursor.
         _saveLocAndVal();
-        _cursor->advance();
+        _cursor->advance(_txn);
         return _savedLoc;
     }
 

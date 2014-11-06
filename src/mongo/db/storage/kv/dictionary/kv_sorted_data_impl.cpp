@@ -164,7 +164,7 @@ namespace mongo {
         if (numKeysOut) {
             *numKeysOut = 0;
             for (boost::scoped_ptr<KVDictionary::Cursor> cursor(_db->getCursor(txn));
-                 cursor->ok(); cursor->advance()) {
+                 cursor->ok(); cursor->advance(txn)) {
                 ++(*numKeysOut);
             }
         }
@@ -211,7 +211,7 @@ namespace mongo {
 
         bool _locate(const BSONObj &key, const DiskLoc &loc) {
             _cursor.reset(_db->getCursor(_txn, _dir));
-            _cursor->seek(makeString(key, loc, false));
+            _cursor->seek(_txn, makeString(key, loc, false));
             return !isEOF() && loc == getDiskLoc() && key == getKey();
         }
 
@@ -290,7 +290,7 @@ namespace mongo {
 
         void advance() {
             if (!isEOF()) {
-                _cursor->advance();
+                _cursor->advance(_txn);
             }
         }
 

@@ -190,19 +190,11 @@ namespace repl {
          * ErrorCodes::NotMaster if you are no longer primary when trying to step down,
          * ErrorCodes::SecondaryAheadOfPrimary if we are primary but there is another node that
          * seems to be ahead of us in replication, and Status::OK otherwise.
-         * TODO(spencer): SERVER-14251 This should block writes while waiting for other nodes to
-         * catch up, and then should wait till a secondary is completely caught up rather than
-         * within 10 seconds.
          */
         virtual Status stepDown(OperationContext* txn,
                                 bool force,
                                 const Milliseconds& waitTime,
                                 const Milliseconds& stepdownTime) = 0;
-
-        /**
-         * TODO a way to trigger an action on replication of a given operation
-         */
-        // handle_t onReplication(OpTime ts, writeConcern, callbackFunction); // TODO
 
         /**
          * Returns true if the node can be considered master for the purpose of introspective
@@ -258,6 +250,11 @@ namespace repl {
          * Updates our internal tracking of the last OpTime applied to this node.
          */
         virtual Status setMyLastOptime(OperationContext* txn, const OpTime& ts) = 0;
+
+        /**
+         * Updates our the message we include in heartbeat responses.
+         */
+        virtual void setMyHeartbeatMessage(const std::string& msg) = 0;
 
         /**
          * Returns the last optime recorded by setMyLastOptime.

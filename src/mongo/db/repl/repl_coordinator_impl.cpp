@@ -191,10 +191,11 @@ namespace {
         ReplicaSetConfig localConfig;
         Status status = localConfig.initialize(cfg.getValue());
         if (!status.isOK()) {
-            warning() << "Locally stored replica set configuration does not parse; "
-                "waiting for rsInitiate or remote heartbeat; Got " << status << " while parsing " <<
-                cfg.getValue();
-            return true;
+            error() << "Locally stored replica set configuration does not parse; See "
+                    "http://www.mongodb.org/dochub/core/recover-replica-set-from-invalid-config "
+                    "for information on how to recover from this. Got \"" <<
+                    status << "\" while parsing " << cfg.getValue();
+            fassertFailedNoTrace(28545);
         }
 
         StatusWith<OpTime> lastOpTimeStatus = _externalState->loadLastOpTime(txn);
@@ -232,10 +233,20 @@ namespace {
                                                            _rsConfig,
                                                            localConfig);
         if (!myIndex.isOK()) {
-            warning() << "Locally stored replica set configuration not valid for current node; "
-                "waiting for reconfig or remote heartbeat; Got " << myIndex.getStatus() <<
-                " while validating " << localConfig.toBSON();
-            myIndex = StatusWith<int>(-1);
+            if (myIndex.getStatus() == ErrorCodes::NodeNotFound ||
+                    myIndex.getStatus() == ErrorCodes::DuplicateKey) {
+                warning() << "Locally stored replica set configuration does not have a valid entry "
+                        "for the current node; waiting for reconfig or remote heartbeat; Got \"" <<
+                        myIndex.getStatus() << "\" while validating " << localConfig.toBSON();
+                myIndex = StatusWith<int>(-1);
+            }
+            else {
+                error() << "Locally stored replica set configuration is invalid; See "
+                        "http://www.mongodb.org/dochub/core/recover-replica-set-from-invalid-config"
+                        " for information on how to recover from this. Got \"" <<
+                        myIndex.getStatus() << "\" while validating " << localConfig.toBSON();
+                fassertFailedNoTrace(28544);
+            }
         }
 
         if (localConfig.getReplSetName() != _settings.ourSetName()) {
@@ -663,6 +674,19 @@ namespace {
         return Status::OK();
     }
 
+    void ReplicationCoordinatorImpl::setMyHeartbeatMessage(const std::string& msg) {
+        CBHStatus cbh = _replExecutor.scheduleWork(
+            stdx::bind(&TopologyCoordinator::setMyHeartbeatMessage,
+                       _topCoord.get(),
+                       _replExecutor.now(),
+                       msg));
+        if (cbh.getStatus() == ErrorCodes::ShutdownInProgress) {
+            return;
+        }
+        fassert(28540, cbh.getStatus());
+        _replExecutor.wait(cbh.getValue());
+    }
+
     Status ReplicationCoordinatorImpl::setMyLastOptime(OperationContext* txn, const OpTime& ts) {
         boost::unique_lock<boost::mutex> lock(_mutex);
         _setMyLastOptime_inlock(&lock, ts);
@@ -674,11 +698,14 @@ namespace {
         invariant(lock->owns_lock());
         _updateSlaveInfoOptime_inlock(&_slaveInfo[_getMyIndexInSlaveInfo_inlock()], ts);
 
-        if (_getReplicationMode_inlock() == modeReplSet) {
-            lock->unlock();
-            _externalState->forwardSlaveProgress(); // Must do this outside _mutex
+        if (_getReplicationMode_inlock() != modeReplSet) {
+            return;
         }
-
+        if (_getCurrentMemberState_inlock().primary()) {
+            return;
+        }
+        lock->unlock();
+        _externalState->forwardSlaveProgress(); // Must do this outside _mutex
     }
 
     OpTime ReplicationCoordinatorImpl::getMyLastOptime() const {
@@ -757,8 +784,8 @@ namespace {
         invariant(slaveInfo);
         invariant(args.memberID < 0 || args.memberID == slaveInfo->memberID);
 
-        LOG(3) << "Node with RID " << args.rid << " currently has optime " << slaveInfo->opTime
-               << "; updating to " << args.ts;
+        LOG(3) << "Node with RID " << args.rid << " and memberID " << slaveInfo->memberID
+               << " currently has optime " << slaveInfo->opTime << "; updating to " << args.ts;
 
         // Only update remote optimes if they increase.
         if (slaveInfo->opTime < args.ts) {
@@ -1597,7 +1624,8 @@ namespace {
                 _settings.ourSetName(),
                 getMyLastOptime(),
                 response);
-        if (outStatus->isOK() && _thisMembersConfigIndex < 0) {
+        if ((outStatus->isOK() || *outStatus == ErrorCodes::InvalidReplicaSetConfig) &&
+                _thisMembersConfigIndex < 0) {
             // If this node does not belong to the configuration it knows about, send heartbeats
             // back to any node that sends us a heartbeat, in case one of those remote nodes has
             // a configuration that contains us.  Chances are excellent that it will, since that
@@ -1710,12 +1738,20 @@ namespace {
             return status;
         }
 
-        CBHStatus cbh = _replExecutor.scheduleWork(
+        const stdx::function<void (const ReplicationExecutor::CallbackData&)> reconfigFinishFn(
                 stdx::bind(&ReplicationCoordinatorImpl::_finishReplSetReconfig,
                            this,
                            stdx::placeholders::_1,
                            newConfig,
                            myIndex.getValue()));
+
+        // If it's a force reconfig, the primary node may not be electable after the configuration
+        // change.  In case we are that primary node, finish the reconfig under the global lock,
+        // so that the step down occurs safely.
+        CBHStatus cbh =
+            args.force ?
+            _replExecutor.scheduleWorkWithGlobalExclusiveLock(reconfigFinishFn) :
+            _replExecutor.scheduleWork(reconfigFinishFn);
         if (cbh.getStatus() == ErrorCodes::ShutdownInProgress) {
             return status;
         }
@@ -1771,7 +1807,7 @@ namespace {
         Status status = newConfig.initialize(configObj);
         if (!status.isOK()) {
             error() << "replSet initiate got " << status << " while parsing " << configObj << rsLog;
-            return status;
+            return Status(ErrorCodes::InvalidReplicaSetConfig, status.reason());;
         }
         if (newConfig.getReplSetName() != _settings.ourSetName()) {
             str::stream errmsg;
@@ -1779,14 +1815,14 @@ namespace {
                 newConfig.getReplSetName() << ", but command line reports " <<
                 _settings.ourSetName() << "; rejecting";
             error() << std::string(errmsg);
-            return Status(ErrorCodes::BadValue, errmsg);
+            return Status(ErrorCodes::InvalidReplicaSetConfig, errmsg);
         }
 
         StatusWith<int> myIndex = validateConfigForInitiate(_externalState.get(), newConfig);
         if (!myIndex.isOK()) {
             error() << "replSet initiate got " << myIndex.getStatus() << " while validating " <<
                 configObj << rsLog;
-            return myIndex.getStatus();
+            return Status(ErrorCodes::InvalidReplicaSetConfig, myIndex.getStatus().reason());
         }
 
         log() << "replSet replSetInitiate config object with " << newConfig.getNumMembers() <<
@@ -1858,6 +1894,7 @@ namespace {
                 info->master = false;
                 info->condVar->notify_all();
             }
+            _isWaitingForDrainToComplete = false;
             result = kActionCloseAllConnections;
         }
         else {
@@ -2016,7 +2053,7 @@ namespace {
             somethingChanged = true;
         }
 
-        if (somethingChanged) {
+        if (somethingChanged && !_getCurrentMemberState_inlock().primary()) {
             lock.unlock();
             _externalState->forwardSlaveProgress(); // Must do this outside _mutex
         }
@@ -2050,8 +2087,10 @@ namespace {
             slaveInfo->rid = handshake.getRid();
             slaveInfo->hostAndPort = member->getHostAndPort();
 
-            lock.unlock();
-            _externalState->forwardSlaveHandshake(); // must do outside _mutex
+            if (!_getCurrentMemberState_inlock().primary()) {
+                lock.unlock();
+                _externalState->forwardSlaveHandshake(); // must do outside _mutex
+            }
             return Status::OK();
         }
 

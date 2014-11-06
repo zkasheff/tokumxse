@@ -233,14 +233,14 @@ namespace mongo {
              *
              * TODO: Is ok() required here? I _think_ not.
              */
-            virtual void seek(const Slice &key) = 0;
+            virtual void seek(OperationContext *opCtx, const Slice &key) = 0;
 
             /**
              * Advance the cursor to the next key/value pair.
              *
              * Requires: ok() is true
              */
-            virtual void advance() = 0;
+            virtual void advance(OperationContext *opCtx) = 0;
 
             /**
              * Get the current key from the cursor.

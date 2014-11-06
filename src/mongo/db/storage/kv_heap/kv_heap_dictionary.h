@@ -81,9 +81,9 @@ namespace mongo {
 
             bool ok() const;
 
-            void seek(const Slice &key);
+            void seek(OperationContext *opCtx, const Slice &key);
 
-            void advance();
+            void advance(OperationContext *opCtx);
 
             Slice currKey() const;
 

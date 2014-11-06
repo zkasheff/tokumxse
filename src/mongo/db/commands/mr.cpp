@@ -38,6 +38,7 @@
 #include "mongo/client/parallel.h"
 #include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/catalog/collection.h"
+#include "mongo/db/catalog/database_holder.h"
 #include "mongo/db/catalog/index_catalog.h"
 #include "mongo/db/clientcursor.h"
 #include "mongo/db/commands.h"
@@ -385,7 +386,6 @@ namespace mongo {
             {
                 // copy indexes into temporary storage
                 Client::WriteContext finalCtx(_txn, _config.outputOptions.finalNamespace);
-                WriteUnitOfWork wuow(_txn);
                 Collection* const finalColl = finalCtx.getCollection();
                 if ( finalColl ) {
                     IndexCatalog::IndexIterator ii =
@@ -408,7 +408,6 @@ namespace mongo {
                         indexesToInsert.push_back( b.obj() );
                     }
                 }
-                wuow.commit();
             }
 
             {
@@ -602,10 +601,8 @@ namespace mongo {
                     Lock::DBLock lock(_txn->lockState(),
                                       nsToDatabaseSubstring(_config.outputOptions.finalNamespace),
                                       MODE_X);
-                    WriteUnitOfWork wunit(_txn);
                     BSONObj o = cursor->nextSafe();
                     Helpers::upsert( _txn, _config.outputOptions.finalNamespace , o );
-                    wunit.commit();
                     pm.hit();
                 }
                 _db.dropCollection( _config.tempNamespace );
@@ -621,7 +618,6 @@ namespace mongo {
                 auto_ptr<DBClientCursor> cursor = _db.query( _config.tempNamespace , BSONObj() );
                 while ( cursor->more() ) {
                     Lock::GlobalWrite lock(txn->lockState()); // TODO(erh) why global?
-                    WriteUnitOfWork wunit(txn);
                     BSONObj temp = cursor->nextSafe();
                     BSONObj old;
 
@@ -650,7 +646,6 @@ namespace mongo {
                     else {
                         Helpers::upsert( _txn, _config.outputOptions.finalNamespace , temp );
                     }
-                    wunit.commit();
                     pm.hit();
                 }
                 pm.finished();
@@ -1118,11 +1113,6 @@ namespace mongo {
             if ( ! _onDisk )
                 return;
 
-            Lock::DBLock kl(_txn->lockState(),
-                            nsToDatabaseSubstring(_config.incLong),
-                            MODE_X);
-            WriteUnitOfWork wunit(_txn);
-
             for ( InMemory::iterator i=_temp->begin(); i!=_temp->end(); i++ ) {
                 BSONList& all = i->second;
                 if ( all.size() < 1 )
@@ -1133,8 +1123,6 @@ namespace mongo {
             }
             _temp->clear();
             _size = 0;
-            wunit.commit();
-
         }
 
         /**
@@ -1156,10 +1144,9 @@ namespace mongo {
         }
 
         void State::reduceAndSpillInMemoryStateIfNeeded() {
-            // Make sure no DB read locks are held, because we might try to acquire write lock and
-            // upgrade is not supported.
-            //
-            dassert(!_txn->lockState()->hasAnyReadLock());
+            // Make sure no DB locks are held, because this method manages its own locking and
+            // write units of work.
+            invariant(!_txn->lockState()->isLocked());
 
             if (_jsMode) {
                 // try to reduce if it is beneficial
@@ -1363,7 +1350,10 @@ namespace mongo {
                         }
 
                         Database* db = dbHolder().get(txn, nss.db());
-                        invariant(db);
+                        if (!db) {
+                            errmsg = "ns doesn't exist";
+                            return false;
+                        }
 
                         PlanExecutor* rawExec;
                         if (!getExecutor(txn,
