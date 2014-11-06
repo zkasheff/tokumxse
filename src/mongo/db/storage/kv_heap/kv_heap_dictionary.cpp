@@ -58,7 +58,7 @@ namespace mongo {
         }
     }
 
-    void KVHeapDictionary::Cursor::seek(const Slice &key) {
+    void KVHeapDictionary::Cursor::seek(OperationContext *opCtx, const Slice &key) {
         if (_forward()) {
             _it = _map.lower_bound(key);
         } else {
@@ -66,7 +66,7 @@ namespace mongo {
         }
     }
 
-    void KVHeapDictionary::Cursor::advance() {
+    void KVHeapDictionary::Cursor::advance(OperationContext *opCtx) {
         invariant(ok());
         if (_forward()) {
             _it++;

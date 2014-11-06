@@ -466,7 +466,7 @@ namespace mongo {
         invariant(loc.isValid() && !loc.isNull());
         const RecordIdKey key(loc);
         _cursor.reset(_db->getCursor(_txn, _dir));
-        _cursor->seek(key.key());
+        _cursor->seek(_txn, key.key());
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
@@ -513,7 +513,7 @@ namespace mongo {
         // We need valid copies of _savedLoc / _savedVal since we are
         // about to advance the underlying cursor.
         _saveLocAndVal();
-        _cursor->advance();
+        _cursor->advance(_txn);
         return _savedLoc;
     }
 
