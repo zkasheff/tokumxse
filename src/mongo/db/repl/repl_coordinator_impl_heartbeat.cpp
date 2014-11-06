@@ -199,6 +199,14 @@ namespace {
 
         switch (action.getAction()) {
         case HeartbeatResponseAction::NoAction:
+            // Update the cached member state if different than the current topology member state
+            if (_currentState != _topCoord->getMemberState()) {
+                boost::unique_lock<boost::mutex> lk(_mutex);
+                const PostMemberStateUpdateAction postUpdateAction =
+                    _updateCurrentMemberStateFromTopologyCoordinator_inlock();
+                lk.unlock();
+                _performPostMemberStateUpdateAction(postUpdateAction);
+            }
             break;
         case HeartbeatResponseAction::Reconfig:
             invariant(responseStatus.isOK());
@@ -398,28 +406,46 @@ namespace {
             lk.unlock();
         }
 
-        boost::scoped_ptr<OperationContext> txn(_externalState->createOperationContext());
-        Status status = _externalState->storeLocalConfigDocument(txn.get(), newConfig.toBSON());
+        if (!myIndex.getStatus().isOK() && myIndex.getStatus() != ErrorCodes::NodeNotFound) {
+            warning() << "Not persisting new configuration in heartbeat response to disk because "
+                    "it is invalid: "<< myIndex.getStatus();
+        }
+        else {
+            boost::scoped_ptr<OperationContext> txn(_externalState->createOperationContext());
+            Status status = _externalState->storeLocalConfigDocument(txn.get(), newConfig.toBSON());
 
-        lk.lock();
-        if (!status.isOK()) {
-            error() << "Ignoring new configuration in heartbeat response because we failed to"
-                " write it to stable storage; " << status;
-            invariant(_rsConfigState == kConfigHBReconfiguring);
-            if (_rsConfig.isInitialized()) {
-                _setConfigState_inlock(kConfigSteady);
+            lk.lock();
+            if (!status.isOK()) {
+                error() << "Ignoring new configuration in heartbeat response because we failed to"
+                    " write it to stable storage; " << status;
+                invariant(_rsConfigState == kConfigHBReconfiguring);
+                if (_rsConfig.isInitialized()) {
+                    _setConfigState_inlock(kConfigSteady);
+                }
+                else {
+                    _setConfigState_inlock(kConfigUninitialized);
+                }
+                return;
             }
-            else {
-                _setConfigState_inlock(kConfigUninitialized);
-            }
-            return;
         }
 
-        _replExecutor.scheduleWork(stdx::bind(&ReplicationCoordinatorImpl::_heartbeatReconfigFinish,
-                                              this,
-                                              stdx::placeholders::_1,
-                                              newConfig,
-                                              myIndex));
+        const stdx::function<void (const ReplicationExecutor::CallbackData&)> reconfigFinishFn(
+                stdx::bind(&ReplicationCoordinatorImpl::_heartbeatReconfigFinish,
+                           this,
+                           stdx::placeholders::_1,
+                           newConfig,
+                           myIndex));
+
+        if (_currentState.primary()) {
+            // If the primary is receiving a heartbeat reconfig, that strongly suggests
+            // that there has been a force reconfiguration.  In any event, it might lead
+            // to this node stepping down as primary, so we'd better do it with the global
+            // lock.
+            _replExecutor.scheduleWorkWithGlobalExclusiveLock(reconfigFinishFn);
+        }
+        else {
+            _replExecutor.scheduleWork(reconfigFinishFn);
+        }
     }
 
     void ReplicationCoordinatorImpl::_heartbeatReconfigFinish(

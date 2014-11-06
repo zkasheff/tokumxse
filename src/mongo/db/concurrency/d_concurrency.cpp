@@ -26,8 +26,6 @@
  *    it in the license file.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kDefault
-
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/concurrency/d_concurrency.h"
@@ -37,7 +35,6 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/stacktrace.h"
 
@@ -237,6 +234,27 @@ namespace mongo {
         resetTime();
     }
 
+    void Lock::DBLock::relockWithMode(const LockMode newMode) {
+        const bool wasRead = (_mode == MODE_S || _mode == MODE_IS);
+        const bool isRead = (newMode == MODE_S || newMode == MODE_IS);
+
+        invariant (!_lockState->inAWriteUnitOfWork()); // 2PL would delay the unlocking
+        invariant(!wasRead || isRead); // Not allowed to change global intent
+
+        _lockState->unlock(_id);
+        _mode = newMode;
+
+        if (supportsDocLocking() || enableCollectionLocking) {
+            _lockState->lock(_id, _mode);
+            dassert(_lockState->isLockHeldForMode(_id, _mode));
+        }
+        else {
+            LockMode effectiveMode = isRead ? MODE_S : MODE_X;
+            _lockState->lock(_id, effectiveMode);
+            dassert(_lockState->isLockHeldForMode(_id, effectiveMode));
+        }
+    }
+
     void Lock::DBLock::unlockDB() {
         _lockState->unlock(_id);
 
@@ -267,6 +285,19 @@ namespace mongo {
         if (supportsDocLocking() || enableCollectionLocking) {
             _lockState->unlock(_id);
         }
+    }
+
+    void Lock::CollectionLock::relockWithMode(LockMode mode, Lock::DBLock& dbLock ) {
+        if (supportsDocLocking() || enableCollectionLocking) {
+            _lockState->unlock(_id);
+        }
+
+        dbLock.relockWithMode( mode );
+
+        if (supportsDocLocking() || enableCollectionLocking) {
+            _lockState->lock(_id, mode);
+        }
+
     }
 
     Lock::ResourceLock::ResourceLock(Locker* lockState, ResourceId rid, LockMode mode)

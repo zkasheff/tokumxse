@@ -121,7 +121,10 @@ namespace {
     }
 
     void BackgroundSync::shutdown() {
-        notify();
+        boost::lock_guard<boost::mutex> lock(_mutex);
+
+        // Wake up producerThread so it notices that we're in shutdown
+        _condvar.notify_all();
     }
 
     void BackgroundSync::notify() {
@@ -144,11 +147,13 @@ namespace {
                 _producerThread();
             }
             catch (const DBException& e) {
-                sethbmsg(str::stream() << "sync source problem: " << e.toString());
+                std::string msg(str::stream() << "sync producer problem: " << e.toString());
+                error() << msg << rsLog;
+                _replCoord->setMyHeartbeatMessage(msg);
             }
             catch (const std::exception& e2) {
-                sethbmsg(str::stream() << "exception in producer: " << e2.what());
-                sleepsecs(60);
+                severe() << "sync producer exception: " << e2.what() << rsLog;
+                fassertFailed(28546);
             }
         }
 
@@ -203,8 +208,11 @@ namespace {
             }
 
             // Wait until we've applied the ops we have before we choose a sync target
-            while (!_appliedBuffer) {
+            while (!_appliedBuffer && !inShutdown()) {
                 _condvar.wait(lock);
+            }
+            if (inShutdown()) {
+                return;
             }
         }
 
@@ -513,11 +521,8 @@ namespace {
     long long BackgroundSync::_readLastAppliedHash(OperationContext* txn) {
         BSONObj oplogEntry;
         try {
-            // Uses WuoW because there is no way to demarcate a read transaction boundary.
             Lock::DBLock lk(txn->lockState(), "local", MODE_X);
-            WriteUnitOfWork uow(txn);
             bool success = Helpers::getLast(txn, rsoplog, oplogEntry);
-            uow.commit();
             if (!success) {
                 // This can happen when we are to do an initial sync.  lastHash will be set
                 // after the initial sync is complete.

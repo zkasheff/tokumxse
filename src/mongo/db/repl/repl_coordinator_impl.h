@@ -139,6 +139,8 @@ namespace repl {
 
         virtual Status setMyLastOptime(OperationContext* txn, const OpTime& ts);
 
+        virtual void setMyHeartbeatMessage(const std::string& msg);
+
         virtual OpTime getMyLastOptime() const;
 
         virtual OID getElectionId();
@@ -800,7 +802,7 @@ namespace repl {
         SlaveInfoVector _slaveInfo;                                                       // (M)
 
         // Current ReplicaSet state.
-        MemberState _currentState;                                                        // (M)
+        MemberState _currentState;                                                        // (MX)
 
         // True if we are waiting for the applier to finish draining.
         bool _isWaitingForDrainToComplete;                                                // (M)
