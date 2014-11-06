@@ -31,7 +31,9 @@
 #include "mongo/db/concurrency/locker.h"
 
 namespace mongo {
-    
+
+    class RecordFetcher;
+
     /**
      * See the documentation for yieldAllLocks(...).
      */
@@ -44,7 +46,7 @@ namespace mongo {
          *
          * If in a nested context (eg DBDirectClient), does nothing.
          */
-        static void yieldAllLocks(OperationContext* txn, int micros);
+        static void yieldAllLocks(OperationContext* txn, int micros, RecordFetcher* fetcher = NULL);
     };
 
 } // namespace mongo

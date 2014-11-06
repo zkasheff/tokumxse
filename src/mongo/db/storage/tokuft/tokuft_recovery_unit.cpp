@@ -39,68 +39,63 @@ namespace mongo {
 
     TokuFTRecoveryUnit::TokuFTRecoveryUnit(const ftcxx::DBEnv &env) :
         // We use depth to track transaction nesting
-        _depth(0), _env(env), _txn()
-    {}
+        _env(env), _txn(), _depth(0) {
+    }
 
     TokuFTRecoveryUnit::~TokuFTRecoveryUnit() {
-        // We should have a transaction iff the depth is non-zero
-        invariant((_depth > 0) == (_txn.txn() != NULL));
-
-        // Abort the underlying transaction if it is still live.
-        if (_txn.txn() != NULL) {
-            _finishUnitOfWork(false);
-        }
+        invariant(_depth == 0);
+        invariant(_changes.size() == 0);
+        invariant(_txn.txn() == NULL);
     }
 
     void TokuFTRecoveryUnit::beginUnitOfWork() {
-        // Begin a ydb transaction for depth 0. Use this same transaction
-        // for all nesting levels deeper than that, since all work either
-        // commits or rolls back together.
         if (_depth++ == 0) {
             invariant(_txn.txn() == NULL);
             _txn = ftcxx::DBTxn(_env, DB_SERIALIZABLE);
         }
     }
 
-    void TokuFTRecoveryUnit::_finishUnitOfWork(const bool commit) {
+    void TokuFTRecoveryUnit::commitUnitOfWork() {
+        invariant(_depth > 0);
+
+        if (_depth > 1) {
+            return;
+        }
+
+        for (Changes::iterator it = _changes.begin(), end = _changes.end();
+             it != end; ++it) {
+            (*it)->commit();
+        }
+        _changes.clear();
+
         invariant(_txn.txn() != NULL);
-
-        // Don't bother to fsync on commit here since we commit the log
-        // in the background on a user-defined period. If the caller wants
-        // to force a log sync, they call RecoveryUnit::awaitCommit()
-        if (commit) {
-            _txn.commit(DB_TXN_NOSYNC);
-        } else {
-            _txn.abort();
-        }
-
-        // Apply and delete changes in forward ordering during
-        // commit, and in reverse order during rollback.
-        while (!_changes.empty()) {
-            RecoveryUnit::Change *ch;
-            if (commit) {
-                ch = _changes.front();
-                _changes.pop_front();
-                ch->commit();
-            } else {
-                ch = _changes.back();
-                _changes.pop_back();
-                ch->rollback();
-            }
-            delete ch;
-        }
+        _txn.commit(DB_TXN_NOSYNC);
+        _txn = ftcxx::DBTxn(_env, DB_SERIALIZABLE);
     }
 
-    void TokuFTRecoveryUnit::commitUnitOfWork() {
-        if (--_depth == 0) {
-            _finishUnitOfWork(true);
-        }
+    void TokuFTRecoveryUnit::commitAndRestart() {
+        invariant(_depth == 0);
+        invariant(_changes.size() == 0);
+        invariant(_txn.txn() == NULL);
+        // no-op since we have no transaction
     }
 
     void TokuFTRecoveryUnit::endUnitOfWork() {
-        if (--_depth == 0) {
-            _finishUnitOfWork(false);
+        invariant(_depth > 0);
+
+        if (--_depth > 0) {
+            return;
         }
+
+        for (Changes::reverse_iterator it = _changes.rbegin(), end = _changes.rend();
+             it != end; ++it) {
+            (*it)->rollback();
+        }
+        _changes.clear();
+
+        invariant(_txn.txn() != NULL);
+        _txn.abort();
+        _txn = ftcxx::DBTxn();
     }
 
     bool TokuFTRecoveryUnit::awaitCommit() {
@@ -117,7 +112,7 @@ namespace mongo {
     }
 
     void TokuFTRecoveryUnit::registerChange(RecoveryUnit::Change *change) {
-        _changes.push_back(change);
+        _changes.push_back(ChangePtr(change));
     }
 
     //
@@ -127,10 +122,6 @@ namespace mongo {
     void *TokuFTRecoveryUnit::writingPtr(void *data, size_t len) {
         log() << "tokuft-engine: writingPtr does nothing" << std::endl;
         return data;
-    }
-
-    void TokuFTRecoveryUnit::syncDataAndTruncateJournal() {
-        log() << "tokuft-engine: syncDataAndTruncateJournal does nothing" << std::endl;
     }
 
 }  // namespace mongo

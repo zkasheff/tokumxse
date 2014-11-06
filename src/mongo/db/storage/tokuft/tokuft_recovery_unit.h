@@ -33,6 +33,7 @@
 
 #include "mongo/db/storage/recovery_unit.h"
 
+#include <boost/shared_ptr.hpp>
 #include <ftcxx/db_env.hpp>
 #include <ftcxx/db_txn.hpp>
 
@@ -55,12 +56,9 @@ namespace mongo {
 
         bool awaitCommit();
 
-        void commitAndRestart() {
-            commitUnitOfWork();
-            beginUnitOfWork();
-        }
+        void commitAndRestart();
 
-        void registerChange(RecoveryUnit::Change *change);
+        void registerChange(Change* change);
 
         //
         // The remaining methods probably belong on DurRecoveryUnit rather than on the interface.
@@ -68,17 +66,15 @@ namespace mongo {
 
         void *writingPtr(void *data, size_t len);
 
-        void syncDataAndTruncateJournal();
-
     private:
-        void _finishUnitOfWork(const bool commit);
+        typedef boost::shared_ptr<Change> ChangePtr;
+        typedef std::vector<ChangePtr> Changes;
 
-        int _depth;
         const ftcxx::DBEnv &_env;
         ftcxx::DBTxn _txn;
 
-        // Owns each Change object: responsible for commit/rollback and delete.
-        std::deque<RecoveryUnit::Change *> _changes;
+        int _depth;
+        Changes _changes;
 
     public:
         // -- TokuFT Specific

@@ -76,7 +76,7 @@ namespace mongo {
         if (r == DB_KEYEXIST) {
             return Status(ErrorCodes::DuplicateKey, errmsg);
         } else if (r == DB_LOCK_DEADLOCK) {
-            return Status(ErrorCodes::DeadLock, errmsg);
+            return Status(ErrorCodes::WriteConflict, errmsg);
         } else if (r == DB_LOCK_NOTGRANTED) {
             return Status(ErrorCodes::LockTimeout, errmsg);
         } else if (r == DB_NOTFOUND) {
@@ -107,7 +107,10 @@ namespace mongo {
             }
         } cb(value);
 
-        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key), DB_SET, cb);
+        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key),
+                             // TODO: No doc-level locking yet, so never take locks on read.
+                             DB_PRELOCKED | DB_PRELOCKED_WRITE,
+                             cb);
         return error2status(r);
     }
 
@@ -164,19 +167,18 @@ namespace mongo {
     }
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
-        : _cur(dict.db().buffered_cursor(_getDBTxn(txn), dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1)))
-    {
-        advance();
-    }
+        : _cur(dict.db().buffered_cursor(ftcxx::DBTxn(), // no concurrency yet, _getDBTxn(txn),
+                                         dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+          _currKey(), _currVal(), _ok(false)
+    {}
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction)
-        : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
+        : _cur(dict.db().buffered_cursor(ftcxx::DBTxn(), // no concurrency yet, _getDBTxn(txn),
                                          ftcxx::Slice(leftKey.data(), leftKey.size()), ftcxx::Slice(rightKey.data(), rightKey.size()),
                                          dict.comparator(), ftcxx::DB::NullFilter(),
-                                         0, (direction == 1), false, true))
-    {
-        advance();
-    }
+                                         0, (direction == 1), false, true)),
+          _currKey(), _currVal(), _ok(false)
+    {}
 
     bool TokuFTDictionary::Cursor::ok() const {
         return _ok;

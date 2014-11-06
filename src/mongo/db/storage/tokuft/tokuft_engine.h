@@ -30,10 +30,6 @@
 
 #pragma once
 
-#include <boost/thread/condition_variable.hpp>
-#include <boost/thread/mutex.hpp>
-#include <boost/thread.hpp>
-
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 
 #include <ftcxx/db_env.hpp>
@@ -46,15 +42,6 @@ namespace mongo {
         // Opens or creates a storage engine environment at the given path
         TokuFTEngine(const std::string &path);
         virtual ~TokuFTEngine();
-
-        /**
-         * TokuFT supports row-level ("document-level") locking.
-         *
-         * We disable it for now until the API is finalized.
-         */
-        bool supportsDocLocking() const {
-            return false;
-        }
 
         virtual RecoveryUnit* newRecoveryUnit();
 
@@ -70,25 +57,40 @@ namespace mongo {
         virtual Status dropKVDictionary( OperationContext* opCtx,
                                           const StringData& ident );
 
-        virtual bool persistDictionaryStats() const { return true; }
-
-        virtual KVDictionary* getMetadataDictionary() {
-            return _metadataDict.get();
+        virtual int64_t getIdentSize( OperationContext* opCtx,
+                              const StringData& ident ) {
+            return 1;
         }
 
-        void logFlushThread();
+        virtual Status repairIdent( OperationContext* opCtx,
+                            const StringData& ident ) {
+            return Status::OK();
+        }
+
+        // TODO: Take a checkpoint? Do we have to? What's the contract?
+        //       Maybe doing nothing is sufficient.
+        virtual int flushAllFiles( bool sync ) { return 0; }
+
+        virtual bool isDurable() const { return true; }
+
+        /**
+         * TokuFT supports row-level ("document-level") locking.
+         *
+         * We disable it for now until the API is finalized.
+         */
+        virtual bool supportsDocLocking() const { return false; }
+
+        // ------------------------------------------------------------------ //
+
+        bool persistDictionaryStats() const { return true; }
+
+        KVDictionary* getMetadataDictionary() {
+            return _metadataDict.get();
+        }
 
     private:
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;
-
-        scoped_ptr<boost::thread> _lfThread;
-
-        // for shutting down the log_flush thread
-        boost::mutex _lfMutex;
-        boost::condition_variable _lfCond;
-        bool _lfRunning;
-        bool _lfFinished;
     };
 
 } // namespace mongo
