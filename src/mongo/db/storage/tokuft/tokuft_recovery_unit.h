@@ -29,9 +29,12 @@
 
 #pragma once
 
+#include "mongo/pch.h"
+
 #include <deque>
 
 #include "mongo/db/storage/recovery_unit.h"
+#include "mongo/util/concurrency/mutex.h"
 
 #include <boost/shared_ptr.hpp>
 #include <ftcxx/db_env.hpp>
@@ -45,7 +48,7 @@ namespace mongo {
     class TokuFTRecoveryUnit : public RecoveryUnit {
         MONGO_DISALLOW_COPYING(TokuFTRecoveryUnit);
     public:
-        TokuFTRecoveryUnit(const ftcxx::DBEnv &env);
+        TokuFTRecoveryUnit(const ftcxx::DBEnv &env, SimpleMutex &writeMutex);
 
         virtual ~TokuFTRecoveryUnit();
 
@@ -72,6 +75,8 @@ namespace mongo {
         typedef std::vector<ChangePtr> Changes;
 
         const ftcxx::DBEnv &_env;
+        SimpleMutex &_writeMutex;
+        scoped_ptr<SimpleMutex::scoped_lock> _writeLock;
         ftcxx::DBTxn _txn;
 
         int _depth;

@@ -31,6 +31,7 @@
 #pragma once
 
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
+#include "mongo/util/concurrency/mutex.h"
 
 #include <ftcxx/db_env.hpp>
 
@@ -78,7 +79,7 @@ namespace mongo {
          *
          * We disable it for now until the API is finalized.
          */
-        virtual bool supportsDocLocking() const { return false; }
+        virtual bool supportsDocLocking() const { return true; }
 
         // ------------------------------------------------------------------ //
 
@@ -91,6 +92,7 @@ namespace mongo {
     private:
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;
+        SimpleMutex _writeMutex;
     };
 
 } // namespace mongo
