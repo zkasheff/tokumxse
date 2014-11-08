@@ -32,6 +32,7 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/db/catalog/collection_options.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
@@ -67,33 +68,42 @@ namespace mongo {
         return ru->txn(opCtx);
     }
 
-    static Status error2status(int r) {
-        if (r == 0) {
-            return Status::OK();
-        }
-        ftcxx::ft_exception ftexc(r);
+    Status ft_exception2status(const ftcxx::ft_exception &ftexc) {
+        int r = ftexc.code();
         std::string errmsg = str::stream() << "TokuFT: " << ftexc.what();
         if (r == DB_KEYEXIST) {
             return Status(ErrorCodes::DuplicateKey, errmsg);
         } else if (r == DB_LOCK_DEADLOCK) {
-            return Status(ErrorCodes::WriteConflict, errmsg);
+            throw WriteConflictException();
+            //return Status(ErrorCodes::WriteConflict, errmsg);
         } else if (r == DB_LOCK_NOTGRANTED) {
-            return Status(ErrorCodes::LockTimeout, errmsg);
+            throw WriteConflictException();
+            //return Status(ErrorCodes::LockTimeout, errmsg);
         } else if (r == DB_NOTFOUND) {
             return Status(ErrorCodes::NoSuchKey, errmsg);
         } else if (r == TOKUDB_OUT_OF_LOCKS) {
-            return Status(ErrorCodes::LockFailed, errmsg);
+            throw WriteConflictException();
+            //return Status(ErrorCodes::LockFailed, errmsg);
         } else if (r == TOKUDB_DICTIONARY_TOO_OLD) {
             return Status(ErrorCodes::UnsupportedFormat, errmsg);
         } else if (r == TOKUDB_DICTIONARY_TOO_NEW) {
             return Status(ErrorCodes::UnsupportedFormat, errmsg);
         } else if (r == TOKUDB_MVCC_DICTIONARY_TOO_NEW) {
-            return Status(ErrorCodes::NamespaceNotFound, errmsg);
+            throw WriteConflictException();
+            //return Status(ErrorCodes::NamespaceNotFound, errmsg);
         }
 
         return Status(ErrorCodes::InternalError,
                       str::stream() << "TokuFT: internal error code "
-                                    << ftexc.code() << ": " << ftexc.what());
+                      << ftexc.code() << ": " << ftexc.what());
+    }
+
+    static Status error2status(int r) {
+        if (r == 0) {
+            return Status::OK();
+        }
+        ftcxx::ft_exception ftexc(r);
+        return ft_exception2status(ftexc);
     }
 
     Status TokuFTDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value) const {
@@ -131,7 +141,14 @@ namespace mongo {
     }
 
     KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const int direction) const {
-        return new Cursor(*this, opCtx, direction);
+        try {
+            return new Cursor(*this, opCtx, direction);
+        } catch (ftcxx::ft_exception &e) {
+            // Will throw WriteConflictException if needed, discard status
+            ft_exception2status(e);
+            // otherwise rethrow
+            throw;
+        }
     }
 
     KVDictionary::Stats TokuFTDictionary::getStats() const {
@@ -190,14 +207,28 @@ namespace mongo {
 
     void TokuFTDictionary::Cursor::seek(OperationContext *opCtx, const Slice &key) {
         _cur.set_txn(_getDBTxn(opCtx));
-        _cur.seek(slice2ftslice(key));
+        try {
+            _cur.seek(slice2ftslice(key));
+        } catch (ftcxx::ft_exception &e) {
+            // Will throw WriteConflictException if needed, discard status
+            ft_exception2status(e);
+            // otherwise rethrow
+            throw;
+        }
         advance(opCtx);
     }
 
     void TokuFTDictionary::Cursor::advance(OperationContext *opCtx) {
         _cur.set_txn(_getDBTxn(opCtx));
         ftcxx::Slice key, val;
-        _ok = _cur.next(key, val);
+        try {
+            _ok = _cur.next(key, val);
+        } catch (ftcxx::ft_exception &e) {
+            // Will throw WriteConflictException if needed, discard status
+            ft_exception2status(e);
+            // otherwise rethrow
+            throw;
+        }
         if (_ok) {
             _currKey = ftslice2slice(key);
             _currVal = ftslice2slice(val);

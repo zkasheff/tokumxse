@@ -38,9 +38,9 @@
 
 namespace mongo {
 
-    TokuFTRecoveryUnit::TokuFTRecoveryUnit(const ftcxx::DBEnv &env, SimpleMutex &writeMutex) :
+    TokuFTRecoveryUnit::TokuFTRecoveryUnit(const ftcxx::DBEnv &env) :
         // We use depth to track transaction nesting
-        _env(env), _writeMutex(writeMutex), _txn(), _depth(0) {
+        _env(env), _txn(), _depth(0) {
     }
 
     TokuFTRecoveryUnit::~TokuFTRecoveryUnit() {
@@ -95,7 +95,6 @@ namespace mongo {
         _changes.clear();
 
         _txn = ftcxx::DBTxn();
-        _writeLock.reset();
     }
 
     bool TokuFTRecoveryUnit::awaitCommit() {
@@ -137,7 +136,7 @@ namespace mongo {
     }
 
     const ftcxx::DBTxn &TokuFTRecoveryUnit::txn(OperationContext *opCtx) {
-        if (!_writeLock && _opCtxIsWriting(opCtx)) {
+        if (_txn.is_read_only() && _opCtxIsWriting(opCtx)) {
             _txn = ftcxx::DBTxn();
         }
         if (_txn.txn() == NULL) {
@@ -146,9 +145,6 @@ namespace mongo {
             int flags;
             if (_opCtxIsWriting(opCtx)) {
                 flags = DB_SERIALIZABLE;
-                if (!_writeLock) {
-                    _writeLock.reset(new SimpleMutex::scoped_lock(_writeMutex));
-                }
             } else {
                 flags = DB_TXN_SNAPSHOT | DB_TXN_READ_ONLY;
             }

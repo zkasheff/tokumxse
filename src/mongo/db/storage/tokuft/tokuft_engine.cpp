@@ -76,8 +76,7 @@ namespace mongo {
 
     TokuFTEngine::TokuFTEngine(const std::string &path)
         : _env(nullptr),
-          _metadataDict(nullptr),
-          _writeMutex("TokuFTWriter")
+          _metadataDict(nullptr)
     {
         ProcessInfo pi;
         unsigned long long memSizeMB = pi.getMemSizeMB();
@@ -116,7 +115,7 @@ namespace mongo {
     }
 
     RecoveryUnit *TokuFTEngine::newRecoveryUnit() {
-        return new TokuFTRecoveryUnit(_env, _writeMutex);
+        return new TokuFTRecoveryUnit(_env);
     }
 
     Status TokuFTEngine::createKVDictionary( OperationContext* opCtx,
