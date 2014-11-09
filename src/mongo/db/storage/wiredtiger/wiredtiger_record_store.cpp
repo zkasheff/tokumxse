@@ -140,24 +140,26 @@ namespace {
         return StatusWith<std::string>(ss);
     }
 
-    WiredTigerRecordStore::WiredTigerRecordStore( OperationContext* ctx,
-                                                  const StringData& ns,
-                                                  const StringData& uri,
-                                                  bool isCapped,
-                                                  int64_t cappedMaxSize,
-                                                  int64_t cappedMaxDocs,
-                                                  CappedDocumentDeleteCallback* cappedDeleteCallback,
-                                                  WiredTigerSizeStorer* sizeStorer )
-        : RecordStore( ns ),
-          _uri( uri.toString() ),
-          _instanceId( WiredTigerSession::genCursorId() ),
-          _isCapped( isCapped ),
-          _isOplog( NamespaceString::oplog( ns ) ),
-          _cappedMaxSize( cappedMaxSize ),
-          _cappedMaxDocs( cappedMaxDocs ),
-          _cappedDeleteCallback( cappedDeleteCallback ),
-          _useOplogHack(shouldUseOplogHack(ctx, _uri)),
-          _sizeStorer( sizeStorer ) {
+    WiredTigerRecordStore::WiredTigerRecordStore(OperationContext* ctx,
+                                                 const StringData& ns,
+                                                 const StringData& uri,
+                                                 bool isCapped,
+                                                 int64_t cappedMaxSize,
+                                                 int64_t cappedMaxDocs,
+                                                 CappedDocumentDeleteCallback* cappedDeleteCallback,
+                                                 WiredTigerSizeStorer* sizeStorer)
+            : RecordStore( ns ),
+              _uri( uri.toString() ),
+              _instanceId( WiredTigerSession::genCursorId() ),
+              _isCapped( isCapped ),
+              _isOplog( NamespaceString::oplog( ns ) ),
+              _cappedMaxSize( cappedMaxSize ),
+              _cappedMaxDocs( cappedMaxDocs ),
+              _cappedDeleteCallback( cappedDeleteCallback ),
+              _useOplogHack(shouldUseOplogHack(ctx, _uri)),
+              _sizeStorer( sizeStorer ),
+              _sizeStorerCounter(0)
+    {
 
         if (_isCapped) {
             invariant(_cappedMaxSize > 0);
@@ -260,7 +262,7 @@ namespace {
         appendCustomStats( txn, &b, 1 );
         BSONObj obj = b.obj();
 
-        BSONObj blockManager = obj["wiredtiger"].Obj()["block manager"].Obj();
+        BSONObj blockManager = obj["wiredtiger"].Obj()["block-manager"].Obj();
         BSONElement fileSize = blockManager["file size in bytes"];
         invariant( fileSize.type() );
 

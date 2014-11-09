@@ -40,8 +40,8 @@ namespace mongo {
         moe::OptionSection wiredTigerOptions("WiredTiger options");
 
         // Add WiredTiger storage engine specific options.
-        wiredTigerOptions.addOptionChaining("storage.wiredtiger.databaseConfig",
-                "wiredTigerDatabaseConfig", moe::String, "WiredTiger database configuration settings");
+        wiredTigerOptions.addOptionChaining("storage.wiredtiger.engineConfig",
+                "wiredTigerEngineConfig", moe::String, "WiredTiger storage engine configuration settings");
         wiredTigerOptions.addOptionChaining("storage.wiredtiger.collectionConfig",
                 "wiredTigerCollectionConfig", moe::String, "WiredTiger collection configuration settings");
         wiredTigerOptions.addOptionChaining("storage.wiredtiger.indexConfig",
@@ -50,27 +50,16 @@ namespace mongo {
         return options->addSection(wiredTigerOptions);
     }
 
-    void WiredTigerGlobalOptions::printHelp(std::ostream* out) {
-        *out << "storage.wiredtiger.databaseConfig : " << databaseConfig << std::endl;
-        *out << "storage.wiredtiger.collectionConfig : " << collectionConfig << std::endl;
-        *out << "storage.wiredtiger.indexConfig : " << indexConfig << std::endl;
-        *out << std::flush;
-    }
-
     bool WiredTigerGlobalOptions::handlePreValidation(const moe::Environment& params) {
-        if (params.count("help")) {
-            printHelp(&std::cout);
-            return true;
-        }
         return true;
     }
 
     Status WiredTigerGlobalOptions::store(const moe::Environment& params,
                                  const std::vector<std::string>& args) {
-        if (params.count("storage.wiredtiger.databaseConfig")) {
-            wiredTigerGlobalOptions.databaseConfig =
-                         params["storage.wiredtiger.databaseConfig"].as<string>();
-            std::cerr << "DB option: " << wiredTigerGlobalOptions.databaseConfig << std::endl;
+        if (params.count("storage.wiredtiger.engineConfig")) {
+            wiredTigerGlobalOptions.engineConfig =
+                         params["storage.wiredtiger.engineConfig"].as<string>();
+            std::cerr << "Engine option: " << wiredTigerGlobalOptions.engineConfig << std::endl;
         }
         if (params.count("storage.wiredtiger.collectionConfig")) {
             wiredTigerGlobalOptions.collectionConfig =
