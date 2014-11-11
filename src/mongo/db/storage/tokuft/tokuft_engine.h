@@ -75,8 +75,6 @@ namespace mongo {
 
         /**
          * TokuFT supports row-level ("document-level") locking.
-         *
-         * We disable it for now until the API is finalized.
          */
         virtual bool supportsDocLocking() const { return true; }
 
