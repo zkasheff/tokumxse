@@ -52,6 +52,7 @@ namespace mongo {
         int mdb_handle_error(WT_EVENT_HANDLER *handler, WT_SESSION *session,
                              int errorCode, const char *message) {
             error() << "WiredTiger (" << errorCode << ") " << message;
+            fassert( 28558, errorCode != WT_PANIC );
             return 0;
         }
 
@@ -92,7 +93,7 @@ namespace mongo {
             ProcessInfo pi;
             unsigned long long memSizeMB  = pi.getMemSizeMB();
             if ( memSizeMB  > 0 ) {
-                double cacheMB = memSizeMB / 10;
+                double cacheMB = memSizeMB / 2;
                 cacheSizeGB = static_cast<int>( cacheMB / 1024 );
                 if ( cacheSizeGB < 1 )
                     cacheSizeGB = 1;
@@ -140,17 +141,27 @@ namespace mongo {
 
 
     WiredTigerKVEngine::~WiredTigerKVEngine() {
-        log() << "WiredTigerKVEngine shutting down";
-        syncSizeInfo();
+        if (_conn) {
+            cleanShutdown(NULL); // our impl doesn't use the OperationContext
+        }
+
         _sizeStorer.reset( NULL );
 
         _sessionCache.reset( NULL );
 
-        if ( _conn ) {
+    }
+
+    void WiredTigerKVEngine::cleanShutdown(OperationContext* txn) {
+        log() << "WiredTigerKVEngine shutting down";
+        syncSizeInfo();
+        if (_conn) {
+            // this must be the last thing we do before _conn->close();
+            _sessionCache->shuttingDown();
+
+            // TODO consider passing "leak_memory=true" to close() when not running a leak checker.
             invariantWTOK( _conn->close(_conn, NULL) );
             _conn = NULL;
         }
-
     }
 
     Status WiredTigerKVEngine::okToRename( OperationContext* opCtx,

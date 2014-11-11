@@ -33,34 +33,23 @@
 #include "mongo/db/storage/record_fetcher.h"
 
 namespace mongo {
-namespace {
-
-    void yieldOrSleepFor1Microsecond() {
-#ifdef _WIN32
-        SwitchToThread();
-#elif defined(__linux__)
-        pthread_yield();
-#else
-        sleepmicros(1);
-#endif
-    }
-
-}
 
     // static
-    void QueryYield::yieldAllLocks(OperationContext* txn, int micros, RecordFetcher* fetcher) {
+    void QueryYield::yieldAllLocks(OperationContext* txn, RecordFetcher* fetcher) {
         // Things have to happen here in a specific order:
-        //   1) Release lock mgr locks
-        //   2) Go to sleep
-        //   3) Touch the record we're yielding on, if there is one (RecordFetcher::fetch)
-        //   4) Reacquire lock mgr locks
+        //   1) Tell the RecordFetcher to do any setup which needs to happen inside locks
+        //   2) Release lock mgr locks
+        //   3) Go to sleep
+        //   4) Touch the record we're yielding on, if there is one (RecordFetcher::fetch)
+        //   5) Reacquire lock mgr locks
 
         Locker* locker = txn->lockState();
 
-        // If we had the read lock, we yield extra hard so that we don't starve writers.
-        bool hadReadLock = locker->hasAnyReadLock();
-
         Locker::LockSnapshot snapshot;
+
+        if (fetcher) {
+            fetcher->setup();
+        }
 
         // Nothing was unlocked, just return, yielding is pointless.
         if (!locker->saveLockStateAndUnlock(&snapshot)) {
@@ -69,36 +58,6 @@ namespace {
 
         // Track the number of yields in CurOp.
         txn->getCurOp()->yielded();
-
-        if (hadReadLock) {
-            // TODO(kal): Is this still relevant?  Probably not?
-            //
-            // Quote: This sleep helps reader threads yield to writer threads.  Without this, the underlying
-            // reader/writer lock implementations are not sufficiently writer-greedy.
-
-#ifdef _WIN32
-            SwitchToThread();
-#else
-            if (0 == micros) {
-                yieldOrSleepFor1Microsecond();
-            }
-            else {
-                sleepmicros(1);
-            }
-#endif
-        }
-        else {
-            if (-1 == micros) {
-                sleepmicros(1);
-                //sleepmicros(Client::recommendedYieldMicros());
-            }
-            else if (0 == micros) {
-                yieldOrSleepFor1Microsecond();
-            }
-            else if (micros > 0) {
-                sleepmicros(micros);
-            }
-        }
 
         if (fetcher) {
             fetcher->fetch();
