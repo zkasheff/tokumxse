@@ -67,6 +67,12 @@ namespace mongo {
             return;
         }
 
+        // Only one thread should do deletes at a time, otherwise they'll conflict.
+        boost::mutex::scoped_lock lock(_cappedDeleteMutex, boost::try_to_lock);
+        if (!lock) {
+            return;
+        }
+
         // Delete documents while we are over-full and the iterator has more.
         for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
              needsDelete(txn) && !iter->isEOF(); ) {

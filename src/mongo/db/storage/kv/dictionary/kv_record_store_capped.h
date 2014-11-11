@@ -86,6 +86,7 @@ namespace mongo {
         const int64_t _cappedMaxSize;
         const int64_t _cappedMaxDocs;
         CappedDocumentDeleteCallback* _cappedDeleteCallback;
+        boost::mutex _cappedDeleteMutex;
     };
 
 } // namespace mongo

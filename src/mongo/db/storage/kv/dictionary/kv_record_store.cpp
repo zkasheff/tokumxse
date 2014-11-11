@@ -146,10 +146,12 @@ namespace mongo {
         }
     }
 
+#define invariantKVOK(s, expr) massert(28562, expr, s.isOK())
+
     int64_t KVRecordStore::_getStats(OperationContext *opCtx, const std::string &key) const {
         Slice valSlice;
         Status s = _metadataDict->get(opCtx, Slice(key), valSlice);
-        massert(28562, str::stream() << "KVRecordStore: error getting stats: " << s.toString(), s.isOK());
+        invariantKVOK(s, str::stream() << "KVRecordStore: error getting stats: " << s.toString());
         return mongo::endian::littleToNative(valSlice.as<int64_t>());
     }
 
@@ -158,11 +160,11 @@ namespace mongo {
             WriteUnitOfWork wuow(opCtx);
             KVUpdateIncrementMessage nrMessage(numRecordsDelta);
             Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
-            massert(28558, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString(), s.isOK());
+            invariantKVOK(s, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString());
 
             KVUpdateIncrementMessage dsMessage(dataSizeDelta);
             s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
-            massert(28559, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString(), s.isOK());
+            invariantKVOK(s, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString());
             wuow.commit();
         }
     }
@@ -188,9 +190,9 @@ namespace mongo {
     void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
         WriteUnitOfWork wuow(opCtx);
         Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
-        massert(28560, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString(), s.isOK());
+        invariantKVOK(s, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString());
         s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
-        massert(28543, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString(), s.isOK());
+        invariantKVOK(s, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString());
         wuow.commit();
     }
 
@@ -256,8 +258,8 @@ namespace mongo {
         const RecordIdKey key(loc);
 
         Slice val;
-        Status status = _db->get(txn, key.key(), val);
-        massert(28561, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString(), status.isOK());
+        Status s = _db->get(txn, key.key(), val);
+        invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString());
 
         _updateStats(txn, -1, -val.size());
 
