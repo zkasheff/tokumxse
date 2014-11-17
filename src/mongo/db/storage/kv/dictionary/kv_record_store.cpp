@@ -146,7 +146,7 @@ namespace mongo {
         }
     }
 
-#define invariantKVOK(s, expr) massert(28562, expr, s.isOK())
+#define invariantKVOK(s, expr) massert(28563, expr, s.isOK())
 
     int64_t KVRecordStore::_getStats(OperationContext *opCtx, const std::string &key) const {
         Slice valSlice;
