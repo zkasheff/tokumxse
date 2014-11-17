@@ -250,7 +250,7 @@ namespace mongo {
         Config::Config( const string& _dbname , const BSONObj& cmdObj )
         {
             dbname = _dbname;
-            ns = dbname + "." + cmdObj.firstElement().valuestr();
+            ns = dbname + "." + cmdObj.firstElement().valuestrsafe();
 
             verbose = cmdObj["verbose"].trueValue();
             jsMode = cmdObj["jsMode"].trueValue();
@@ -1001,18 +1001,22 @@ namespace mongo {
             const NamespaceString nss(_config.incLong);
             const WhereCallbackReal whereCallback(_txn, nss.db());
 
-            CanonicalQuery* cq;
+            CanonicalQuery* cqRaw;
             verify(CanonicalQuery::canonicalize(_config.incLong,
                                                 BSONObj(),
                                                 sortKey,
                                                 BSONObj(),
-                                                &cq,
+                                                &cqRaw,
                                                 whereCallback).isOK());
+            std::auto_ptr<CanonicalQuery> cq(cqRaw);
+
+            Collection* coll = getCollectionOrUassert(ctx->getDb(), _config.incLong);
+            invariant(coll);
 
             PlanExecutor* rawExec;
             verify(getExecutor(_txn,
-                               getCollectionOrUassert(ctx->getDb(), _config.incLong),
-                               cq,
+                               coll,
+                               cq.release(),
                                PlanExecutor::YIELD_AUTO,
                                &rawExec,
                                QueryPlannerParams::NO_TABLE_SCAN).isOK());
@@ -1338,27 +1342,26 @@ namespace mongo {
 
                         const WhereCallbackReal whereCallback(txn, nss.db());
 
-                        CanonicalQuery* cq;
+                        CanonicalQuery* cqRaw;
                         if (!CanonicalQuery::canonicalize(config.ns,
                                                           config.filter,
                                                           config.sort,
                                                           BSONObj(),
-                                                          &cq,
+                                                          &cqRaw,
                                                           whereCallback).isOK()) {
                             uasserted(17238, "Can't canonicalize query " + config.filter.toString());
                             return 0;
                         }
+                        std::auto_ptr<CanonicalQuery> cq(cqRaw);
 
                         Database* db = dbHolder().get(txn, nss.db());
-                        if (!db) {
-                            errmsg = "ns doesn't exist";
-                            return false;
-                        }
+                        Collection* coll = state.getCollectionOrUassert(db, config.ns);
+                        invariant(coll);
 
                         PlanExecutor* rawExec;
                         if (!getExecutor(txn,
-                                         state.getCollectionOrUassert(db, config.ns),
-                                         cq,
+                                         coll,
+                                         cq.release(),
                                          PlanExecutor::YIELD_AUTO,
                                          &rawExec).isOK()) {
                             uasserted(17239, "Can't get executor for query "

@@ -188,6 +188,10 @@ namespace mongo {
         }
     }
 
+    void WiredTigerRecoveryUnit::setOplogReadTill( const DiskLoc& loc ) {
+        _oplogReadTill = loc;
+    }
+
     void WiredTigerRecoveryUnit::_txnClose( bool commit ) {
         invariant( _active );
         WT_SESSION *s = _session->getSession();

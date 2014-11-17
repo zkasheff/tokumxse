@@ -56,6 +56,7 @@
 #include "mongo/db/instance.h"
 #include "mongo/db/json.h"
 #include "mongo/db/jsobj.h"
+#include "mongo/db/lasterror.h"
 #include "mongo/db/repl/handshake_args.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
 #include "mongo/db/storage_options.h"
@@ -67,13 +68,12 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/log.h"
 
-
 namespace mongo {
 
     using logger::LogComponent;
 
-    mongo::mutex& Client::clientsMutex = *(new mutex("clientsMutex"));
-    set<Client*>& Client::clients = *(new set<Client*>); // always be in clientsMutex when manipulating this
+    boost::mutex Client::clientsMutex;
+    ClientSet Client::clients;
 
     TSP_DEFINE(Client, currentClient)
 
@@ -81,64 +81,51 @@ namespace mongo {
        call this when your thread starts.
     */
     void Client::initThread(const char *desc, AbstractMessagingPort *mp) {
-        verify( currentClient.get() == 0 );
+        invariant(currentClient.get() == 0);
 
-        string fullDesc = desc;
-        if ( str::equals( "conn" , desc ) && mp != NULL )
+        string fullDesc;
+        if (mp != NULL) {
             fullDesc = str::stream() << desc << mp->connectionId();
+        }
+        else {
+            fullDesc = desc;
+        }
 
-        setThreadName( fullDesc.c_str() );
+        setThreadName(fullDesc.c_str());
+        mongo::lastError.initThread();
 
         // Create the client obj, attach to thread
-        Client *c = new Client( fullDesc, mp );
-        currentClient.reset(c);
-        mongo::lastError.initThread();
-        c->setAuthorizationSession(new AuthorizationSession(new AuthzSessionExternalStateMongod(
-                getGlobalAuthorizationManager())));
+        Client* client = new Client(fullDesc, mp);
+        client->setAuthorizationSession(
+            new AuthorizationSession(
+                new AuthzSessionExternalStateMongod(getGlobalAuthorizationManager())));
+
+        currentClient.reset(client);
+
+        // This makes the client visible to maintenance threads
+        boost::mutex::scoped_lock clientLock(clientsMutex);
+        clients.insert(client);
     }
 
-    Client::Client(const string& desc, AbstractMessagingPort *p) :
-        ClientBasic(p),
-        _shutdown(false),
-        _desc(desc),
-        _god(0),
-        _lastOp(0)
-    {
-        _hasWrittenSinceCheckpoint = false;
-        _connectionId = p ? p->connectionId() : 0;
+    Client::Client(const string& desc, AbstractMessagingPort *p)
+        : ClientBasic(p),
+          _desc(desc),
+          _threadId(boost::this_thread::get_id()),
+          _connectionId(p ? p->connectionId() : 0),
+          _god(0),
+          _lastOp(0),
+          _shutdown(false) {
+
         _curOp = new CurOp( this );
-#ifndef _WIN32
-        stringstream temp;
-        temp << hex << showbase << pthread_self();
-        _threadId = temp.str();
-#endif
-        scoped_lock bl(clientsMutex);
-        clients.insert(this);
     }
 
     Client::~Client() {
         _god = 0;
 
-        // Because both Client object pointers and logging infrastructure are stored in Thread
-        // Specific Pointers and because we do not explicitly control the order in which TSPs are
-        // deleted, it is possible for the logging infrastructure to have been deleted before
-        // this code runs.  This leads to segfaults (access violations) if this code attempts
-        // to log anything.  Therefore, disable logging from this destructor until this is fixed.
-        // TODO(tad) Force the logging infrastructure to be the last TSP to be deleted for each
-        // thread and reenable this code once that is done.
-#if 0
-        if ( _context )
-            error() << "Client::~Client _context should be null but is not; client:" << _desc << endl;
-
-        if ( ! _shutdown ) {
-            error() << "Client::shutdown not called: " << _desc << endl;
-        }
-#endif
-
         if ( ! inShutdown() ) {
             // we can't clean up safely once we're in shutdown
             {
-                scoped_lock bl(clientsMutex);
+                boost::mutex::scoped_lock clientLock(clientsMutex);
                 if ( ! _shutdown )
                     clients.erase(this);
             }
@@ -157,7 +144,7 @@ namespace mongo {
         if ( inShutdown() )
             return false;
         {
-            scoped_lock bl(clientsMutex);
+            boost::mutex::scoped_lock clientLock(clientsMutex);
             clients.erase(this);
         }
 
@@ -228,43 +215,41 @@ namespace mongo {
     AutoGetCollectionForRead::AutoGetCollectionForRead(OperationContext* txn,
                                                        const std::string& ns)
             : _txn(txn),
-              _nss(ns),
-              _db(_txn, _nss.db(), MODE_IS),
+              _db(_txn, nsToDatabaseSubstring(ns), MODE_IS),
               _collLock(_txn->lockState(), ns, MODE_IS),
               _coll(NULL) {
 
-        _init();
+        _init(ns, nsToCollectionSubstring(ns));
     }
 
     AutoGetCollectionForRead::AutoGetCollectionForRead(OperationContext* txn,
                                                        const NamespaceString& nss)
             : _txn(txn),
-              _nss(nss),
-              _db(_txn, _nss.db(), MODE_IS),
-              _collLock(_txn->lockState(), _nss.toString(), MODE_IS),
+              _db(_txn, nss.db(), MODE_IS),
+              _collLock(_txn->lockState(), nss.toString(), MODE_IS),
               _coll(NULL) {
 
-        _init();
+        _init(nss.toString(), nss.coll());
     }
 
-    void AutoGetCollectionForRead::_init() {
-        massert(28535, "need a non-empty collection name", !_nss.coll().empty());
+    void AutoGetCollectionForRead::_init(const std::string& ns, const StringData& coll) {
+        massert(28535, "need a non-empty collection name", !coll.empty());
 
         // TODO: Client::Context legacy, needs to be removed
         _txn->getCurOp()->ensureStarted();
-        _txn->getCurOp()->setNS(_nss.toString());
+        _txn->getCurOp()->setNS(ns);
 
         // We have both the DB and collection locked, which the prerequisite to do a stable shard
         // version check.
-        ensureShardVersionOKOrThrow(_nss);
+        ensureShardVersionOKOrThrow(ns);
 
         // At this point, we are locked in shared mode for the database by the DB lock in the
         // constructor, so it is safe to load the DB pointer.
         if (_db.getDb()) {
             // TODO: Client::Context legacy, needs to be removed
-            _txn->getCurOp()->enter(_nss.toString().c_str(), _db.getDb()->getProfilingLevel());
+            _txn->getCurOp()->enter(ns.c_str(), _db.getDb()->getProfilingLevel());
 
-            _coll = _db.getDb()->getCollection(_txn, _nss);
+            _coll = _db.getDb()->getCollection(_txn, ns);
         }
     }
 
@@ -335,9 +320,10 @@ namespace mongo {
 
     void Client::reportState(BSONObjBuilder& builder) {
         builder.append("desc", desc());
-        if (_threadId.size()) {
-            builder.append("threadId", _threadId);
-        }
+
+        std::stringstream ss;
+        ss << _threadId;
+        builder.append("threadId", ss.str());
 
         if (_connectionId) {
             builder.appendNumber("connectionId", _connectionId);
@@ -496,7 +482,8 @@ namespace mongo {
                 s << " code:" << exceptionInfo.code;
         }
 
-        s << " numYields:" << curop.numYields();
+        if (!getGlobalEnvironment()->getGlobalStorageEngine()->supportsDocLocking())
+            s << " numYields:" << curop.numYields();
         
         s << " ";
         
@@ -580,7 +567,8 @@ namespace mongo {
         OPDEBUG_APPEND_BOOL( upsert );
         OPDEBUG_APPEND_NUMBER( keyUpdates );
 
-        b.appendNumber( "numYield" , curop.numYields() );
+        if (!getGlobalEnvironment()->getGlobalStorageEngine()->supportsDocLocking())
+            b.appendNumber( "numYield" , curop.numYields() );
 
         if ( ! exceptionInfo.empty() )
             exceptionInfo.append( b , "exception" , "exceptionCode" );

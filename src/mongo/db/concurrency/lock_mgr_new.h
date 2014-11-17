@@ -74,7 +74,7 @@ namespace mongo {
          * @resId ResourceId for which a lock operation was previously called.
          * @result Outcome of the lock operation.
          */
-        virtual void notify(const ResourceId& resId, LockResult result) = 0;
+        virtual void notify(ResourceId resId, LockResult result) = 0;
     };
 
 
@@ -82,7 +82,8 @@ namespace mongo {
      * There is one of those entries per each request for a lock. They hang on a linked list off
      * the LockHead and also are in a map for each Locker. This structure is not thread-safe.
      *
-     * The lifetime of a LockRequest is managed by the Locker class.
+     * LockRequest are owned by the Locker class and it controls their lifetime. They should not
+     * be deleted while on the LockManager though (see the contract for the lock/unlock methods).
      */
     struct LockRequest {
 
@@ -97,6 +98,7 @@ namespace mongo {
          * Used for initialization of a LockRequest, which might have been retrieved from cache.
          */
         void initNew(Locker* locker, LockGrantNotification* notify);
+
 
         //
         // These fields are maintained by the Locker class
@@ -113,7 +115,27 @@ namespace mongo {
 
 
         //
-        // These fields are owned and maintained by the LockManager class
+        // These fields are maintained by both the LockManager and Locker class
+        //
+
+        // If the request cannot be granted right away, whether to put it at the front or at the
+        // end of the queue. By default, requests are put at the back. If a request is requested
+        // to be put at the front, this effectively bypasses fairness. Default is FALSE.
+        bool enqueueAtFront;
+
+        // When this request is granted and as long as it is on the granted queue, the particular
+        // resource's policy will be changed to "compatibleFirst". This means that even if there
+        // are pending requests on the conflict queue, if a compatible request comes in it will be
+        // granted immediately. This effectively turns off fairness.
+        bool compatibleFirst;
+
+        // How many times has LockManager::lock been called for this request. Locks are released
+        // when their recursive count drops to zero.
+        unsigned recursiveCount;
+
+
+        //
+        // These fields are owned and maintained by the LockManager class exclusively
         //
 
         // Pointer to the lock to which this request belongs, or null if this request has not yet
@@ -138,10 +160,6 @@ namespace mongo {
         // This value is different from MODE_NONE only if a conversion is requested for a lock and
         // that conversion cannot be immediately granted.
         LockMode convertMode;
-
-        // How many times has LockManager::lock been called for this request. Locks are released
-        // when their recursive count drops to zero.
-        unsigned recursiveCount;
     };
 
 
@@ -182,7 +200,8 @@ namespace mongo {
           *
           * @return See comments for LockResult.
           */
-        LockResult lock(const ResourceId& resId, LockRequest* request, LockMode mode);
+        LockResult lock(ResourceId resId, LockRequest* request, LockMode mode);
+        LockResult convert(ResourceId resId, LockRequest* request, LockMode newMode);
 
         /**
          * Decrements the reference count of a previously locked request and if the reference count
@@ -248,7 +267,7 @@ namespace mongo {
          * Retrieves the bucket in which the particular resource must reside. There is no need to
          * hold a lock when calling this function.
          */
-        LockBucket* _getBucket(const ResourceId& resId) const;
+        LockBucket* _getBucket(ResourceId resId) const;
 
         /**
          * Prints the contents of a bucket to the log.
@@ -268,8 +287,7 @@ namespace mongo {
          */
         void _onLockModeChanged(LockHead* lock, bool checkConflictQueue);
 
-
-        unsigned _numLockBuckets;
+        static const unsigned _numLockBuckets;
         LockBucket* _lockBuckets;
     };
 
@@ -332,7 +350,7 @@ namespace mongo {
         typedef std::vector<LockerId> ConflictingOwnersList;
 
         struct Edges {
-            Edges(const ResourceId& resId) : resId(resId) { }
+            explicit Edges(ResourceId resId) : resId(resId) { }
 
             // Resource id indicating the lock node
             ResourceId resId;

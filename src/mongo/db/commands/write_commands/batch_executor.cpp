@@ -1064,16 +1064,6 @@ namespace mongo {
         WriteOpResult result;
         insertOne(state, &result);
 
-        if (state->hasLock()) {
-            // Normally, unlocking records lock time stats on the active CurOp.  However,
-            // insertOne() may not release the lock. In that case, record time by hand.
-            state->getLock().recordTime();
-            // If we deschedule here, there could be substantial unaccounted locked time.
-            // Any time from here will be attributed to the next insert in the batch, or
-            // not attributed to any operation if this is the last op in the batch.
-            state->getLock().resetTime();
-        }
-
         incWriteStats(currInsertItem,
                       result.getStats(),
                       result.getError(),
@@ -1284,14 +1274,12 @@ namespace mongo {
                 result->getStats().upsertedID = resUpsertedID;
             }
             catch ( const WriteConflictException& dle ) {
-                ++attempt;
                 if ( isMulti ) {
                     log() << "Had WriteConflict during multi update, aborting";
                     throw;
                 }
 
-                LOG(attempt > 1 ? 0 : 1) << "Had WriteConflict doing update on " << nsString
-                                         << ", attempt: " << attempt << " retrying";
+                WriteConflictException::logAndBackoff( attempt++, "update", nsString.ns() );
 
                 createCollection = false;
                 // RESTART LOOP
@@ -1360,10 +1348,7 @@ namespace mongo {
                 break;
             }
             catch ( const WriteConflictException& dle ) {
-                if ( attempt++ > 1 ) {
-                    log() << "Had WriteConflict doing delete on " << nss
-                          << ", attempt: " << attempt << " retrying";
-                }
+                WriteConflictException::logAndBackoff( attempt++, "delete", nss.ns() );
             }
             catch ( const DBException& ex ) {
                 Status status = ex.toStatus();

@@ -84,6 +84,8 @@
 
 namespace mongo {
 
+    using std::string;
+
     CmdShutdown cmdShutdown;
 
     void CmdShutdown::help( stringstream& help ) const {
@@ -129,9 +131,8 @@ namespace mongo {
             }
         }
 
-        writelocktry wlt(txn->lockState(), 2 * 60 * 1000);
-        uassert( 13455 , "dbexit timed out getting lock" , wlt.got() );
-        return shutdownHelper(txn);
+        shutdownHelper();
+        return true;
     }
 
     class CmdDropDatabase : public Command {
@@ -450,7 +451,7 @@ namespace mongo {
         virtual std::vector<BSONObj> stopIndexBuilds(OperationContext* opCtx,
                                                      Database* db, 
                                                      const BSONObj& cmdObj) {
-            std::string nsToDrop = db->name() + '.' + cmdObj.firstElement().valuestr();
+            std::string nsToDrop = db->name() + '.' + cmdObj.firstElement().valuestrsafe();
 
             IndexCatalog::IndexKillCriteria criteria;
             criteria.ns = nsToDrop;
@@ -458,7 +459,13 @@ namespace mongo {
         }
 
         virtual bool run(OperationContext* txn, const string& dbname , BSONObj& cmdObj, int, string& errmsg, BSONObjBuilder& result, bool fromRepl) {
-            const string nsToDrop = dbname + '.' + cmdObj.firstElement().valuestr();
+            const std::string collToDrop = cmdObj.firstElement().valuestrsafe();
+            if (collToDrop.empty()) {
+                errmsg = "no collection name specified";
+                return false;
+            }
+
+            const std::string nsToDrop = dbname + '.' + collToDrop;
             if (!serverGlobalParams.quiet) {
                 LOG(0) << "CMD: drop " << nsToDrop << endl;
             }
@@ -561,7 +568,7 @@ namespace mongo {
                 return appendCommandStatus( result, status );
             }
 
-            const string ns = dbname + '.' + firstElt.valuestr();
+            const std::string ns = dbname + '.' + firstElt.valuestrsafe();
 
             // Build options object from remaining cmdObj elements.
             BSONObjBuilder optionsBuilder;
@@ -649,16 +656,18 @@ namespace mongo {
             BSONObj query = BSON( "files_id" << jsobj["filemd5"] << "n" << GTE << n );
             BSONObj sort = BSON( "files_id" << 1 << "n" << 1 );
 
-            // Check shard version at startup.
-            // This will throw before we've done any work if shard version is outdated
-            AutoGetCollectionForRead ctx(txn, ns);
-            Collection* coll = ctx.getCollection();
-
             CanonicalQuery* cq;
             if (!CanonicalQuery::canonicalize(ns, query, sort, BSONObj(), &cq).isOK()) {
                 uasserted(17240, "Can't canonicalize query " + query.toString());
                 return 0;
             }
+
+            // Check shard version at startup.
+            // This will throw before we've done any work if shard version is outdated
+            // We drop and re-acquire these locks every document because md5'ing is expensive
+            scoped_ptr<AutoGetCollectionForRead> ctx(new AutoGetCollectionForRead(txn, ns));
+            Collection* coll = ctx->getCollection();
+            const ChunkVersion shardVersionAtStart = shardingState.getVersion(ns);
 
             PlanExecutor* rawExec;
             if (!getExecutor(txn, coll, cq, PlanExecutor::YIELD_MANUAL, &rawExec,
@@ -668,8 +677,8 @@ namespace mongo {
             }
 
             auto_ptr<PlanExecutor> exec(rawExec);
-
-            const ChunkVersion shardVersionAtStart = shardingState.getVersion(ns);
+            // Process notifications when the lock is released/reacquired in the loop below
+            exec->registerExec();
 
             BSONObj obj;
             PlanExecutor::ExecState state;
@@ -686,13 +695,33 @@ namespace mongo {
                     uassert( 10040 ,  "chunks out of order" , n == myn );
                 }
 
-                // make a copy of obj since we access data in it while yielding
+                // make a copy of obj since we access data in it while yielding locks
                 BSONObj owned = obj.getOwned();
+                exec->saveState();
+                // UNLOCKED
+                ctx.reset();
+
                 int len;
                 const char * data = owned["data"].binDataClean( len );
-
+                // This is potentially an expensive operation, so do it out of the lock
                 md5_append( &st , (const md5_byte_t*)(data) , len );
                 n++;
+
+                try {
+                    // RELOCKED
+                    ctx.reset(new AutoGetCollectionForRead(txn, ns));
+                }
+                catch (const SendStaleConfigException& ex) {
+                    LOG(1) << "chunk metadata changed during filemd5, will retarget and continue";
+                    break;
+                }
+
+                // Have the lock again. See if we were killed.
+                if (!exec->restoreState(txn)) {
+                    if (!partialOk) {
+                        uasserted(13281, "File deleted during filemd5 command");
+                    }
+                }
             }
 
             if (partialOk)
@@ -961,7 +990,13 @@ namespace mongo {
         }
 
         bool run(OperationContext* txn, const string& dbname, BSONObj& jsobj, int, string& errmsg, BSONObjBuilder& result, bool fromRepl ) {
-            const string ns = dbname + "." + jsobj.firstElement().valuestr();
+            const std::string collName = jsobj.firstElement().valuestrsafe();
+            if (collName.empty()) {
+                errmsg = "no collection name specified";
+                return false;
+            }
+
+            const std::string ns = dbname + "." + collName;
 
             Lock::DBLock dbXLock(txn->lockState(), dbname, MODE_X);
             WriteUnitOfWork wunit(txn);
@@ -1420,8 +1455,6 @@ namespace mongo {
                       bool fromRepl, int queryOptions) {
         string dbname = nsToDatabase( ns );
 
-        LOG(2) << "run command " << ns << ' ' << _cmdobj << endl;
-
         const char *p = strchr(ns, '.');
         if ( !p ) return false;
         if ( strcmp(p, ".$cmd") != 0 ) return false;
@@ -1461,12 +1494,17 @@ namespace mongo {
         Command * c = e.type() ? Command::findCommand( e.fieldName() ) : 0;
 
         if ( c ) {
+            LOG(2) << "run command " << ns << ' ' << c->getRedactedCopyForLogging(_cmdobj);
             Command::execCommand(txn, c, queryOptions, ns, jsobj, anObjBuilder, fromRepl);
         }
         else {
-            Command::appendCommandStatus(anObjBuilder,
-                                         false,
-                                         str::stream() << "no such cmd: " << e.fieldName());
+            // In the absence of a Command object, no redaction is possible. Therefore
+            // to avoid displaying potentially sensitive information in the logs,
+            // we restrict the log message to the name of the unrecognized command.
+            // However, the complete command object will still be echoed to the client.
+            string msg = str::stream() << "no such command: " << e.fieldName();
+            LOG(2) << msg;
+            Command::appendCommandStatus(anObjBuilder, false, msg);
             anObjBuilder.append("code", ErrorCodes::CommandNotFound);
             anObjBuilder.append("bad cmd" , _cmdobj );
             Command::unknownCommands.increment();

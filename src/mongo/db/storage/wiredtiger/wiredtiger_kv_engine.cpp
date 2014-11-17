@@ -51,20 +51,36 @@ namespace mongo {
     namespace {
         int mdb_handle_error(WT_EVENT_HANDLER *handler, WT_SESSION *session,
                              int errorCode, const char *message) {
-            error() << "WiredTiger (" << errorCode << ") " << message;
-            fassert( 28558, errorCode != WT_PANIC );
+            try {
+                error() << "WiredTiger (" << errorCode << ") " << message;
+                fassert( 28558, errorCode != WT_PANIC );
+            }
+            catch (...) {
+                std::terminate();
+            }
             return 0;
         }
 
         int mdb_handle_message( WT_EVENT_HANDLER *handler, WT_SESSION *session,
                                 const char *message) {
-            log() << "WiredTiger " << message;
+            try {
+                log() << "WiredTiger " << message;
+            }
+            catch (...) {
+                std::terminate();
+            }
             return 0;
         }
 
         int mdb_handle_progress( WT_EVENT_HANDLER *handler, WT_SESSION *session,
                                  const char *operation, uint64_t progress) {
-            log() << "WiredTiger progress " << operation << " " << progress;
+            try {
+                log() << "WiredTiger progress " << operation << " " << progress;
+            }
+            catch (...) {
+                std::terminate();
+            }
+
             return 0;
         }
 
@@ -127,7 +143,13 @@ namespace mongo {
         ss << extraOpenOptions;
         string config = ss.str();
         log() << "wiredtiger_open config: " << config;
-        invariantWTOK(wiredtiger_open(path.c_str(), &_eventHandler, config.c_str(), &_conn));
+        int ret = wiredtiger_open(path.c_str(), &_eventHandler, config.c_str(), &_conn);
+        // Invalid argument (EINVAL) is usually caused by invalid configuration string.
+        // We still fassert() but without a stack trace.
+        if (ret == EINVAL) {
+            fassertFailedNoTrace(28561);
+        }
+        invariantWTOK(ret);
         _sessionCache.reset( new WiredTigerSessionCache( this ) );
 
         _sizeStorerUri = "table:sizeStorer";
@@ -153,7 +175,7 @@ namespace mongo {
 
     void WiredTigerKVEngine::cleanShutdown(OperationContext* txn) {
         log() << "WiredTigerKVEngine shutting down";
-        syncSizeInfo();
+        syncSizeInfo(true);
         if (_conn) {
             // this must be the last thing we do before _conn->close();
             _sessionCache->shuttingDown();
@@ -172,7 +194,7 @@ namespace mongo {
         _sizeStorer->store( _uri( ident ),
                             originalRecordStore->numRecords( opCtx ),
                             originalRecordStore->dataSize( opCtx ) );
-        syncSizeInfo();
+        syncSizeInfo(true);
         return Status::OK();
     }
 
@@ -192,7 +214,7 @@ namespace mongo {
 
     int WiredTigerKVEngine::flushAllFiles( bool sync ) {
         LOG(1) << "WiredTigerKVEngine::flushAllFiles";
-        syncSizeInfo();
+        syncSizeInfo(true);
 
         WiredTigerSession session( _conn, -1 );
         WT_SESSION* s = session.getSession();
@@ -201,14 +223,14 @@ namespace mongo {
         return 1;
     }
 
-    void WiredTigerKVEngine::syncSizeInfo() const {
+    void WiredTigerKVEngine::syncSizeInfo( bool sync ) const {
         if ( !_sizeStorer )
             return;
 
         try {
             WiredTigerSession session( _conn, -1 );
             WT_SESSION* s = session.getSession();
-            invariantWTOK( s->begin_transaction( s, "sync=true" ) );
+            invariantWTOK( s->begin_transaction( s, sync ? "sync=true" : NULL ) );
             _sizeStorer->storeInto( &session, _sizeStorerUri );
             invariantWTOK( s->commit_transaction( s, NULL ) );
         }
@@ -265,12 +287,6 @@ namespace mongo {
         }
     }
 
-    Status WiredTigerKVEngine::dropRecordStore( OperationContext* opCtx,
-                                                const StringData& ident ) {
-        _drop( ident );
-        return Status::OK();
-    }
-
     string WiredTigerKVEngine::_uri( const StringData& ident ) const {
         return string("table:") + ident.toString();
     }
@@ -289,8 +305,8 @@ namespace mongo {
         return new WiredTigerIndexStandard( _uri( ident ) );
     }
 
-    Status WiredTigerKVEngine::dropSortedDataInterface( OperationContext* opCtx,
-                                                        const StringData& ident ) {
+    Status WiredTigerKVEngine::dropIdent( OperationContext* opCtx,
+                                          const StringData& ident ) {
         _drop( ident );
         return Status::OK();
     }
@@ -326,7 +342,7 @@ namespace mongo {
     bool WiredTigerKVEngine::haveDropsQueued() const {
         if ( _sizeStorerSyncTracker.intervalHasElapsed() ) {
             _sizeStorerSyncTracker.resetLastTime();
-            syncSizeInfo();
+            syncSizeInfo(false);
         }
         boost::mutex::scoped_lock lk( _identToDropMutex );
         return !_identToDrop.empty();
@@ -374,4 +390,31 @@ namespace mongo {
         return true;
     }
 
+    std::vector<std::string> WiredTigerKVEngine::getAllIdents( OperationContext* opCtx ) const {
+        std::vector<std::string> all;
+        WiredTigerCursor cursor( "metadata:", WiredTigerSession::kMetadataCursorId, opCtx );
+        WT_CURSOR* c = cursor.get();
+        if ( !c )
+            return all;
+
+        while ( c->next(c) == 0 ) {
+            const char* raw;
+            c->get_key(c, &raw );
+            StringData key(raw);
+            size_t idx = key.find( ':' );
+            if ( idx == string::npos )
+                continue;
+            StringData type = key.substr( 0, idx );
+            if ( type != "table" )
+                continue;
+
+            StringData ident = key.substr(idx+1);
+            if ( ident == "sizeStorer" )
+                continue;
+
+            all.push_back( ident.toString() );
+        }
+
+        return all;
+    }
 }

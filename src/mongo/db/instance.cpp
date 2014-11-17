@@ -376,9 +376,6 @@ namespace {
             nestedOp.reset( new CurOp( &c , currentOpP ) );
             currentOpP = nestedOp.get();
         }
-        else {
-            c.newTopLevelRequest();
-        }
 
         CurOp& currentOp = *currentOpP;
         currentOp.reset(remote,op);
@@ -599,10 +596,7 @@ namespace {
                     log(LogComponent::kWrites) << "Had WriteConflict during multi update, aborting";
                     throw;
                 }
-                else if ( attempt++ > 1 ) {
-                    log(LogComponent::kWrites) << "Had WriteConflict doing update on " << ns
-                                               << ", attempt: " << attempt << " retrying";
-                }
+                WriteConflictException::logAndBackoff( attempt++, "update", ns.toString() );
             }
         }
 
@@ -677,10 +671,7 @@ namespace {
                 break;
             }
             catch ( const WriteConflictException& dle ) {
-                if ( attempt++ > 1 ) {
-                    log(LogComponent::kWrites) << "Had WriteConflict doing delete on " << ns
-                                               << ", attempt: " << attempt << " retrying";
-                }
+                WriteConflictException::logAndBackoff( attempt++, "delete", ns.toString() );
             }
         }
     }
@@ -1047,7 +1038,7 @@ namespace {
         storageEngine->cleanShutdown(txn);
     }
 
-    void exitCleanly( ExitCode code, OperationContext* txn ) {
+    void exitCleanly(ExitCode code) {
         if (shutdownInProgress.fetchAndAdd(1) != 0) {
             while (true) {
                 sleepsecs(1000);
@@ -1055,39 +1046,37 @@ namespace {
         }
 
         // Global storage engine may not be started in all cases before we exit
-        if (getGlobalEnvironment()->getGlobalStorageEngine() != NULL) {
-
-            getGlobalEnvironment()->setKillAllOperations();
-
-            repl::getGlobalReplicationCoordinator()->shutdown();
-
-            if (!txn) {
-                // leaked, but we are exiting so doesn't matter
-                txn = new OperationContextImpl();
-            }
-
-            Lock::GlobalWrite lk(txn->lockState());
-            log() << "now exiting" << endl;
-
-            // Execute the graceful shutdown tasks, such as flushing the outstanding journal 
-            // and data files, close sockets, etc.
-            try {
-                shutdownServer(txn);
-            }
-            catch (const DBException& ex) {
-                severe() << "shutdown failed with DBException " << ex;
-                std::terminate();
-            }
-            catch (const std::exception& ex) {
-                severe() << "shutdown failed with std::exception: " << ex.what();
-                std::terminate();
-            }
-            catch (...) {
-                severe() << "shutdown failed with exception";
-                std::terminate();
-            }
+        if (getGlobalEnvironment()->getGlobalStorageEngine() == NULL) {
+            dbexit(code); // never returns
+            invariant(false);
         }
 
+        OperationContextImpl txn;
+
+        getGlobalEnvironment()->setKillAllOperations();
+
+        repl::getGlobalReplicationCoordinator()->shutdown();
+
+        Lock::GlobalWrite lk(txn.lockState());
+        log() << "now exiting" << endl;
+
+        // Execute the graceful shutdown tasks, such as flushing the outstanding journal 
+        // and data files, close sockets, etc.
+        try {
+            shutdownServer(&txn);
+        }
+        catch (const DBException& ex) {
+            severe() << "shutdown failed with DBException " << ex;
+            std::terminate();
+        }
+        catch (const std::exception& ex) {
+            severe() << "shutdown failed with std::exception: " << ex.what();
+            std::terminate();
+        }
+        catch (...) {
+            severe() << "shutdown failed with exception";
+            std::terminate();
+        }
         dbexit( code );
     }
 

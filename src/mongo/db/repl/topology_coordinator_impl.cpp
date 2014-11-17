@@ -302,7 +302,10 @@ namespace {
         if (closestIndex == -1) {
             // Did not find any members to sync from
             std::string msg("could not find member to sync from");
-            log() << msg << rsLog;
+            // Only log when we had a valid sync source before
+            if (!_syncSource.empty()) {
+                log() << msg << rsLog;
+            }
             setMyHeartbeatMessage(now, msg);
 
             _syncSource = HostAndPort();
@@ -603,8 +606,10 @@ namespace {
             _lastVote.whoHostAndPort = hopeful->getHostAndPort();
             vote = _selfConfig().getNumVotes();
             invariant(hopeful->getId() == args.whoid);
-            log() << "replSetElect voting yea for " << hopeful->getHostAndPort().toString()
-                  << " (" << args.whoid << ')';
+            if (vote > 0) {
+                log() << "replSetElect voting yea for " << hopeful->getHostAndPort().toString()
+                      << " (" << args.whoid << ')';
+            }
         }
 
         response->append("vote", vote);
@@ -857,15 +862,15 @@ namespace {
         invariant(memberIndex != _selfIndex);
 
         MemberHeartbeatData& hbData = _hbdata[memberIndex];
+        const MemberConfig member = _currentConfig.getMemberAt(memberIndex);
         if (!hbResponse.isOK()) {
             if (isUnauthorized) {
                 LOG(3) << "setAuthIssue: heartbeat response failed due to authentication"
-                    " issue for member _id:"
-                       << _currentConfig.getMemberAt(memberIndex).getId();
+                    " issue for member _id:" << member.getId();
                 hbData.setAuthIssue(now);
             } else {
                 LOG(3) << "setDownValues: heartbeat response failed for member _id:"
-                       << _currentConfig.getMemberAt(memberIndex).getId() << ", msg:  "
+                       << member.getId() << ", msg:  "
                        << hbResponse.getStatus().reason();
 
                 hbData.setDownValues(now, hbResponse.getStatus().reason());
@@ -874,9 +879,9 @@ namespace {
         else {
             ReplSetHeartbeatResponse hbr = hbResponse.getValue();
             LOG(3) << "setUpValues: heartbeat response good for member _id:"
-                   << _currentConfig.getMemberAt(memberIndex).getId() << ", msg:  "
+                   << member.getId() << ", msg:  "
                    << hbr.getHbMsg();
-            hbData.setUpValues(now, hbr);
+            hbData.setUpValues(now, member.getHostAndPort(), hbr);
         }
         HeartbeatResponseAction nextAction = _updateHeartbeatDataImpl(
                 memberIndex,
@@ -1241,6 +1246,7 @@ namespace {
                 hbResponse.setHbMsg("");
                 _hbdata[primaryIndex].setUpValues(
                         _hbdata[primaryIndex].getLastHeartbeat(),
+                        _currentConfig.getMemberAt(primaryIndex).getHostAndPort(),
                         hbResponse);
             }
             _currentPrimaryIndex = primaryIndex;
@@ -1462,6 +1468,9 @@ namespace {
             }
         }
         response->setMe(selfConfig.getHostAndPort());
+        if (_iAmPrimary()) {
+            response->setElectionId(_electionId);
+        }
     }
 
     void TopologyCoordinatorImpl::prepareFreezeResponse(

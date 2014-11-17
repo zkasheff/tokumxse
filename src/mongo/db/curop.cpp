@@ -34,6 +34,7 @@
 #include "mongo/db/client.h"
 #include "mongo/db/commands/server_status_metric.h"
 #include "mongo/db/catalog/database.h"
+#include "mongo/db/global_environment_experiment.h"
 #include "mongo/db/stats/top.h"
 #include "mongo/util/fail_point_service.h"
 
@@ -121,7 +122,7 @@ namespace mongo {
 
     CurOp::~CurOp() {
         if ( _wrapped ) {
-            scoped_lock bl(Client::clientsMutex);
+            boost::mutex::scoped_lock clientLock(Client::clientsMutex);
             _client->_curOp = _wrapped;
         }
         _client = 0;
@@ -205,7 +206,8 @@ namespace mongo {
         if( killPending() )
             builder->append("killPending", true);
 
-        builder->append( "numYields" , _numYields );
+        if (!getGlobalEnvironment()->getGlobalStorageEngine()->supportsDocLocking())
+            builder->append( "numYields" , _numYields );
     }
 
     BSONObj CurOp::description() {

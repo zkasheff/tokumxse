@@ -503,7 +503,7 @@ namespace mongo {
 
         Status status = _dbEntry->createCollection(txn, ns,
                                                 options, allocateDefaultSpace);
-        massertStatusOK(status);
+        massertNoTraceStatusOK(status);
 
         Collection* collection = getCollection(txn, ns);
         invariant(collection);
@@ -595,7 +595,7 @@ namespace mongo {
                            "collection already exists" );
 
         CollectionOptions collectionOptions;
-        Status status = collectionOptions.parse( options );
+        Status status = collectionOptions.parse(options, storageGlobalParams.engine);
         if ( !status.isOK() )
             return status;
 

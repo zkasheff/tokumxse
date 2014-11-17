@@ -74,9 +74,6 @@ namespace mongo {
                                              const StringData& ident,
                                              const CollectionOptions& options );
 
-        virtual Status dropRecordStore( OperationContext* opCtx,
-                                        const StringData& ident );
-
         virtual Status createSortedDataInterface( OperationContext* opCtx,
                                                   const StringData& ident,
                                                   const IndexDescriptor* desc );
@@ -85,8 +82,8 @@ namespace mongo {
                                                              const StringData& ident,
                                                              const IndexDescriptor* desc );
 
-        virtual Status dropSortedDataInterface( OperationContext* opCtx,
-                                                const StringData& ident );
+        virtual Status dropIdent( OperationContext* opCtx,
+                                  const StringData& ident );
 
         virtual Status okToRename( OperationContext* opCtx,
                                    const StringData& fromNS,
@@ -102,6 +99,8 @@ namespace mongo {
         virtual Status repairIdent( OperationContext* opCtx,
                                     const StringData& ident );
 
+        std::vector<std::string> getAllIdents( OperationContext* opCtx ) const;
+
         virtual void cleanShutdown(OperationContext* txn);
 
         // wiredtiger specific
@@ -112,7 +111,7 @@ namespace mongo {
 
         int currentEpoch() const { return _epoch; }
 
-        void syncSizeInfo() const;
+        void syncSizeInfo(bool sync) const;
 
     private:
 

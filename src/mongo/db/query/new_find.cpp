@@ -524,20 +524,17 @@ namespace mongo {
                             Message &result,
                             bool fromDBDirectClient) {
         // Validate the namespace.
-        const char *ns = q.ns;
-        uassert(16332, "can't have an empty ns", ns[0]);
-
-        const NamespaceString nsString(ns);
-        uassert(16256, str::stream() << "Invalid ns [" << ns << "]", nsString.isValid());
+        const NamespaceString nss(q.ns);
+        uassert(16256, str::stream() << "Invalid ns [" << nss.ns() << "]", nss.isValid());
 
         // Set curop information.
-        curop.debug().ns = ns;
+        curop.debug().ns = nss.ns();
         curop.debug().ntoreturn = q.ntoreturn;
         curop.debug().query = q.query;
         curop.setQuery(q.query);
 
         // If the query is really a command, run it.
-        if (nsString.isCommand()) {
+        if (nss.isCommand()) {
             int nToReturn = q.ntoreturn;
             uassert(16979, str::stream() << "bad numberToReturn (" << nToReturn
                                          << ") for $cmd type ns - can only be 1 or -1",
@@ -549,7 +546,7 @@ namespace mongo {
             bb.skip(sizeof(QueryResult::Value));
 
             BSONObjBuilder cmdResBuf;
-            if (!runCommands(txn, ns, q.query, curop, bb, cmdResBuf, false, q.queryOptions)) {
+            if (!runCommands(txn, q.ns, q.query, curop, bb, cmdResBuf, false, q.queryOptions)) {
                 uasserted(13530, "bad or malformed command request?");
             }
 
@@ -570,24 +567,26 @@ namespace mongo {
             return "";
         }
 
-        const NamespaceString nss(q.ns);
-
         // Parse the qm into a CanonicalQuery.
-        CanonicalQuery* cq;
-        Status canonStatus = CanonicalQuery::canonicalize(
-                                    q, &cq, WhereCallbackReal(txn, StringData(nss.db())));
-        if (!canonStatus.isOK()) {
-            uasserted(17287, str::stream() << "Can't canonicalize query: " << canonStatus.toString());
+        std::auto_ptr<CanonicalQuery> cq;
+        {
+            CanonicalQuery* cqRaw;
+            Status canonStatus = CanonicalQuery::canonicalize(q,
+                                                              &cqRaw,
+                                                              WhereCallbackReal(txn, nss.db()));
+            if (!canonStatus.isOK()) {
+                uasserted(17287, str::stream() << "Can't canonicalize query: "
+                                               << canonStatus.toString());
+            }
+            cq.reset(cqRaw);
         }
+        invariant(cq.get());
 
         QLOG() << "Running query:\n" << cq->toString();
         LOG(2) << "Running query: " << cq->toStringShort();
 
         // Parse, canonicalize, plan, transcribe, and get a plan executor.
         PlanExecutor* rawExec = NULL;
-
-        // We use this a lot below.
-        const LiteParsedQuery& pq = cq->getParsed();
 
         AutoGetCollectionForRead ctx(txn, nss);
 
@@ -608,26 +607,27 @@ namespace mongo {
         // Otherwise we go through the selection of which executor is most suited to the
         // query + run-time context at hand.
         Status status = Status::OK();
-        if (NULL != collection && pq.getOptions().oplogReplay) {
-            // Takes ownership of 'cq'.
-            status = getOplogStartHack(txn, collection, cq, &rawExec);
+        if (NULL != collection && cq->getParsed().getOptions().oplogReplay) {
+            status = getOplogStartHack(txn, collection, cq.release(), &rawExec);
         }
         else {
             size_t options = QueryPlannerParams::DEFAULT;
-            if (shardingState.needCollectionMetadata(pq.ns())) {
+            if (shardingState.needCollectionMetadata(nss.ns())) {
                 options |= QueryPlannerParams::INCLUDE_SHARD_FILTER;
             }
-            // Takes ownership of 'cq'.
-            status = getExecutor(txn, collection, cq, PlanExecutor::YIELD_AUTO, &rawExec, options);
+            status = getExecutor(txn, collection, cq.release(), PlanExecutor::YIELD_AUTO, &rawExec,
+                                 options);
         }
+        invariant(cq.get() == NULL); // cq has been released above.
 
         if (!status.isOK()) {
-            // NOTE: Do not access cq as getExecutor has deleted it.
             uasserted(17007, "Unable to execute query: " + status.reason());
         }
 
         verify(NULL != rawExec);
         auto_ptr<PlanExecutor> exec(rawExec);
+
+        const LiteParsedQuery& pq = exec->getCanonicalQuery()->getParsed();
 
         // If it's actually an explain, do the explain and return rather than falling through
         // to the normal query execution loop.
@@ -661,7 +661,7 @@ namespace mongo {
         }
 
         // We freak out later if this changes before we're done with the query.
-        const ChunkVersion shardingVersionAtStart = shardingState.getVersion(cq->ns());
+        const ChunkVersion shardingVersionAtStart = shardingState.getVersion(nss.ns());
 
         // Handle query option $maxTimeMS (not used with commands).
         curop.setMaxTimeMicros(static_cast<unsigned long long>(pq.getMaxTimeMS()) * 1000);
@@ -671,7 +671,7 @@ namespace mongo {
         bool slaveOK = pq.getOptions().slaveOk || pq.hasReadPref();
         status = repl::getGlobalReplicationCoordinator()->checkCanServeReadsFor(
                 txn,
-                NamespaceString(cq->ns()),
+                nss,
                 slaveOK);
         uassertStatusOK(status);
 
@@ -680,11 +680,11 @@ namespace mongo {
         // If we're sharded, we might encounter data that is not consistent with our sharding state.
         // We must ignore this data.
         CollectionMetadataPtr collMetadata;
-        if (!shardingState.needCollectionMetadata(pq.ns())) {
+        if (!shardingState.needCollectionMetadata(nss.ns())) {
             collMetadata = CollectionMetadataPtr();
         }
         else {
-            collMetadata = shardingState.getCollectionMetadata(pq.ns());
+            collMetadata = shardingState.getCollectionMetadata(nss.ns());
         }
 
         // Run the query.
@@ -776,12 +776,12 @@ namespace mongo {
         }
 
         // TODO(greg): This will go away soon.
-        if (!shardingState.getVersion(pq.ns()).isWriteCompatibleWith(shardingVersionAtStart)) {
+        if (!shardingState.getVersion(nss.ns()).isWriteCompatibleWith(shardingVersionAtStart)) {
             // if the version changed during the query we might be missing some data and its safe to
             // send this as mongos can resend at this point
-            throw SendStaleConfigException(pq.ns(), "version changed during initial query",
+            throw SendStaleConfigException(nss.ns(), "version changed during initial query",
                                            shardingVersionAtStart,
-                                           shardingState.getVersion(pq.ns()));
+                                           shardingState.getVersion(nss.ns()));
         }
 
         const logger::LogComponent queryLogComponent = logger::LogComponent::kQuery;
@@ -823,8 +823,8 @@ namespace mongo {
             // Allocate a new ClientCursor.  We don't have to worry about leaking it as it's
             // inserted into a global map by its ctor.
             ClientCursor* cc = new ClientCursor(collection, exec.get(),
-                                                cq->getParsed().getOptions().toInt(),
-                                                cq->getParsed().getFilter());
+                                                pq.getOptions().toInt(),
+                                                pq.getFilter());
             ccId = cc->cursorid();
 
             if (fromDBDirectClient) {
@@ -884,7 +884,7 @@ namespace mongo {
         qr.setNReturned(numResults);
 
         // curop.debug().exhaust is set above.
-        return curop.debug().exhaust ? pq.ns() : "";
+        return curop.debug().exhaust ? nss.ns() : "";
     }
 
 }  // namespace mongo
