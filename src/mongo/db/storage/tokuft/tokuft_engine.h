@@ -86,6 +86,10 @@ namespace mongo {
             return _metadataDict.get();
         }
 
+        void cleanShutdown(OperationContext* txn);
+
+        std::vector<std::string> getAllIdents(OperationContext *opCtx) const;
+
     private:
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;

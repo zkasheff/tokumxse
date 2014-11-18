@@ -102,10 +102,15 @@ namespace mongo {
         txn.commit();
     }
 
-    TokuFTEngine::~TokuFTEngine() {
+    TokuFTEngine::~TokuFTEngine() {}
+
+    void TokuFTEngine::cleanShutdown(OperationContext *opCtx) {
         invariant(_env.env() != NULL);
 
         log() << "tokuft-engine: shutdown" << std::endl;
+
+        _metadataDict.reset();
+        _env.close();
     }
 
     static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
@@ -148,6 +153,36 @@ namespace mongo {
         }
         invariant(r == 0);
         return Status::OK();
+    }
+
+    std::vector<std::string> TokuFTEngine::getAllIdents(OperationContext *opCtx) const {
+        std::vector<std::string> idents;
+
+        ftcxx::Slice key;
+        ftcxx::Slice val;
+        typedef ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> DirectoryCursor;
+        for (DirectoryCursor cur(_env.buffered_cursor(_getDBTxn(opCtx),
+                                                      TokuFTDictionary::Comparator(KVDictionary::Comparator::useMemcmp()),
+                                                      ftcxx::DB::NullFilter()));
+             cur.ok(); cur.next(key, val)) {
+            if (key.size() == 0) {
+                continue;
+            }
+            StringData filename(key.data(), key.size());
+
+            // strip off the trailing '\0' in the key
+            if (filename[filename.size() - 1] == 0) {
+                filename = filename.substr(0, filename.size() - 1);
+            }
+
+            if (filename == "tokuft.metadata") {
+                continue;
+            }
+
+            idents.push_back(filename.toString());
+        }
+
+        return idents;
     }
 
 } // namespace mongo

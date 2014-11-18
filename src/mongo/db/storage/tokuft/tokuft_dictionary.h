@@ -72,6 +72,10 @@ namespace mongo {
 
         class Comparator : public KVDictionary::Comparator {
         public:
+            Comparator(const KVDictionary::Comparator &cmp)
+                : KVDictionary::Comparator(cmp)
+            {}
+
             Comparator(const ftcxx::Slice &serialized)
                 : KVDictionary::Comparator(ftslice2slice(serialized))
             {}
