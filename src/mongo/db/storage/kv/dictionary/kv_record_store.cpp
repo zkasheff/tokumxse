@@ -266,12 +266,12 @@ namespace mongo {
 
         Slice val;
         Status s = _db->get(txn, key.key(), val);
-        invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << status.toString());
+        invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << s.toString());
 
         _updateStats(txn, -1, -val.size());
 
-        status = _db->remove( txn, key.key() );
-        invariant(status.isOK());
+        s = _db->remove( txn, key.key() );
+        invariant(s.isOK());
     }
 
     StatusWith<DiskLoc> KVRecordStore::insertRecord( OperationContext* txn,
