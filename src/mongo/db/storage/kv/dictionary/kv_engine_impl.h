@@ -74,9 +74,6 @@ namespace mongo {
                                      const StringData& ident,
                                      const CollectionOptions& options );
 
-        Status dropRecordStore( OperationContext* opCtx,
-                                const StringData& ident );
-
         // --------
 
         Status createSortedDataInterface( OperationContext* opCtx,
@@ -87,8 +84,9 @@ namespace mongo {
                                                      const StringData& ident,
                                                      const IndexDescriptor* desc );
 
-        Status dropSortedDataInterface( OperationContext* opCtx,
-                                        const StringData& ident );
+        Status dropIdent( OperationContext* opCtx,
+                          const StringData& ident );
+
     protected:
         // Create a KVDictionary (same rules as createRecordStore / createSortedDataInterface)
         // 

@@ -67,7 +67,7 @@ namespace mongo {
         public:
             /**
              * Return a Comparator object that compares keys using memcmp
-             * and sorts by length when keys contain a comment prefix.
+             * and sorts by length when keys contain a common prefix.
              */
             static Comparator useMemcmp();
 

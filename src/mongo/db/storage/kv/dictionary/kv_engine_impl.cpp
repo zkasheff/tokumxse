@@ -72,12 +72,11 @@ namespace mongo {
         return rs.release();
     }
 
-    Status KVEngineImpl::dropRecordStore( OperationContext* opCtx,
-                                          const StringData& ident ) {
+    Status KVEngineImpl::dropIdent( OperationContext* opCtx,
+                                    const StringData& ident ) {
         if (persistDictionaryStats()) {
             KVRecordStore::deleteMetadataKeys(opCtx, getMetadataDictionary(), ident);
         }
-        // Dropping a record store is as simple as dropping its underlying KVDictionary.
         return dropKVDictionary(opCtx, ident);
     }
 
@@ -103,12 +102,6 @@ namespace mongo {
         IndexEntryComparison cmp(Ordering::make(keyPattern));
         auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp)));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
-    }
-
-    Status KVEngineImpl::dropSortedDataInterface( OperationContext* opCtx,
-                                                  const StringData& ident ) {
-        // Dropping a sorted data impl is as simple as dropping its underlying KVDictionary
-        return dropKVDictionary(opCtx, ident);
     }
 
 }

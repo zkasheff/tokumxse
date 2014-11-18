@@ -48,12 +48,30 @@ namespace mongo {
                                                   const StringData& ident,
                                                   const KVDictionary::Comparator &cmp,
                                                   bool mayCreate ) {
-        return new KVHeapDictionary(cmp);
+        boost::mutex::scoped_lock lk(_mapMutex);
+        HeapsMap::const_iterator it = _map.find(ident);
+        if (it != _map.end()) {
+            return it->second;
+        }
+        auto_ptr<KVDictionary> ptr(new KVHeapDictionary(cmp));
+        _map[ident] = ptr.get();
+        return ptr.release();
     }
 
     Status KVHeapEngine::dropKVDictionary( OperationContext* opCtx,
                                             const StringData& ident ) {
+        boost::mutex::scoped_lock lk(_mapMutex);
+        _map.erase(ident);
         return Status::OK();
+    }
+
+    std::vector<std::string> KVHeapEngine::getAllIdents( OperationContext* opCtx ) const {
+        std::vector<std::string> idents;
+        boost::mutex::scoped_lock lk(_mapMutex);
+        for (HeapsMap::const_iterator it = _map.begin(); it != _map.end(); ++it) {
+            idents.push_back(it->first);
+        }
+        return idents;
     }
 
 }

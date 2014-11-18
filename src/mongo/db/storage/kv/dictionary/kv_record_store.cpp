@@ -190,6 +190,10 @@ namespace mongo {
     void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
         WriteUnitOfWork wuow(opCtx);
         Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
+        if (!s.isOK() && s.code() == ErrorCodes::NoSuchKey) {
+            // This is ok, it may have been an index, not a record store.
+            return;
+        }
         invariantKVOK(s, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString());
         s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
         invariantKVOK(s, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString());

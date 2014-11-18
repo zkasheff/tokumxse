@@ -30,11 +30,18 @@
 
 #pragma once
 
+#include <boost/thread/mutex.hpp>
+
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
+#include "mongo/util/string_map.h"
 
 namespace mongo {
 
     class KVHeapEngine : public KVEngineImpl {
+        typedef StringMap<KVDictionary *> HeapsMap;
+        mutable boost::mutex _mapMutex;
+        HeapsMap _map;
+
     public:
         virtual ~KVHeapEngine() { }
 
@@ -68,6 +75,10 @@ namespace mongo {
 
         // THe KVDictionaryHeap does not support fine-grained locking.
         bool supportsDocLocking() const { return false; }
+
+        std::vector<std::string> getAllIdents( OperationContext* opCtx ) const;
+
+        void cleanShutdown(OperationContext *txn) {}
 
     };
 
