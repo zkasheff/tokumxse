@@ -35,6 +35,7 @@
 #include <boost/static_assert.hpp>
 
 #include "mongo/db/catalog/collection_options.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
@@ -157,15 +158,23 @@ namespace mongo {
 
     void KVRecordStore::_updateStats(OperationContext *opCtx, int64_t numRecordsDelta, int64_t dataSizeDelta) {
         if (_metadataDict) {
-            WriteUnitOfWork wuow(opCtx);
-            KVUpdateIncrementMessage nrMessage(numRecordsDelta);
-            Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
-            invariantKVOK(s, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString());
+            int attempt = 1;
+            while (true) {
+                try {
+                    WriteUnitOfWork wuow(opCtx);
+                    KVUpdateIncrementMessage nrMessage(numRecordsDelta);
+                    Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
+                    invariantKVOK(s, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString());
 
-            KVUpdateIncrementMessage dsMessage(dataSizeDelta);
-            s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
-            invariantKVOK(s, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString());
-            wuow.commit();
+                    KVUpdateIncrementMessage dsMessage(dataSizeDelta);
+                    s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
+                    invariantKVOK(s, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString());
+                    wuow.commit();
+                    break;
+                } catch (WriteConflictException &e) {
+                    WriteConflictException::logAndBackoff(attempt++, "update", "tokuft.metadata");
+                }
+            }
         }
     }
 
