@@ -86,16 +86,17 @@ namespace mongo {
 
         log() << "TokuFT: opening environment at " << path << std::endl;
         _env = ftcxx::DBEnvBuilder()
-            // TODO: Direct I/O
-            // TODO: Lock wait timeout callback, lock killed callback
-            // TODO: redzone, logdir
-            // TODO: cleaner period, cleaner iterations
-            .set_cachesize(cacheSizeGB, cacheSizeB)
-            .checkpointing_set_period(60)
-            .change_fsync_log_period(100)
-            .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
-            .set_update(&ftcxx::wrapped_updater<tokuft_update>)
-            .open(path.c_str(), env_flags, env_mode);
+               // TODO: Direct I/O
+               // TODO: Lock wait timeout callback, lock killed callback
+               // TODO: redzone, logdir
+               // TODO: cleaner period, cleaner iterations
+               .set_cachesize(cacheSizeGB, cacheSizeB)
+               .checkpointing_set_period(60)
+               .change_fsync_log_period(100)
+               .set_lock_wait_time_msec(4000)
+               .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
+               .set_update(&ftcxx::wrapped_updater<tokuft_update>)
+               .open(path.c_str(), env_flags, env_mode);
 
         ftcxx::DBTxn txn(_env);
         _metadataDict.reset(new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp()));
