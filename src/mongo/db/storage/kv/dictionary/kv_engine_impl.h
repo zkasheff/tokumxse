@@ -33,6 +33,7 @@
 #include <boost/thread/mutex.hpp>
 
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
+#include "mongo/db/storage/kv/dictionary/kv_size_storer.h"
 #include "mongo/db/storage/kv/kv_engine.h"
 
 namespace mongo {
@@ -48,6 +49,8 @@ namespace mongo {
      * recovery unit) and nothing more.
      */
     class KVEngineImpl : public KVEngine {
+        scoped_ptr<KVSizeStorer> _sizeStorer;
+
     public:
         virtual ~KVEngineImpl() { }
 
@@ -87,6 +90,20 @@ namespace mongo {
         Status dropIdent( OperationContext* opCtx,
                           const StringData& ident );
 
+        Status okToRename( OperationContext* opCtx,
+                           const StringData& fromNS,
+                           const StringData& toNS,
+                           const StringData& ident,
+                           const RecordStore* originalRecordStore ) const;
+
+        void cleanShutdown(OperationContext *opCtx) {
+            if (_sizeStorer) {
+                _sizeStorer->storeIntoDict(opCtx);
+                _sizeStorer.reset();
+            }
+            cleanShutdownImpl(opCtx);
+        }
+
     protected:
         // Create a KVDictionary (same rules as createRecordStore / createSortedDataInterface)
         // 
@@ -120,6 +137,12 @@ namespace mongo {
         virtual KVDictionary *getMetadataDictionary() {
             invariant(false);
             return NULL;
+        }
+
+        virtual KVSizeStorer *getSizeStorer(OperationContext *opCtx);
+
+        virtual void cleanShutdownImpl(OperationContext *opCtx) {
+            // override this
         }
     };
 

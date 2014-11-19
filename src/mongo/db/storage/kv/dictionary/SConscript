@@ -17,10 +17,12 @@ env.Library(
         'kv_engine_impl.cpp',
         'kv_record_store.cpp',
         'kv_record_store_capped.cpp',
+        'kv_size_storer.cpp',
         'kv_sorted_data_impl.cpp',
         ],
     LIBDEPS=[
         'kv_dictionary',
+        '$BUILD_DIR/mongo/background_job',
         '$BUILD_DIR/mongo/db/storage/kv/kv_engine_core',
         '$BUILD_DIR/mongo/db/concurrency/write_conflict_exception',
         ]

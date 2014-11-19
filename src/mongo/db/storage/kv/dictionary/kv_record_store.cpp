@@ -39,6 +39,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
+#include "mongo/db/storage/kv/dictionary/kv_size_storer.h"
 #include "mongo/db/storage/kv/slice.h"
 
 #include "mongo/platform/endian.h"
@@ -127,12 +128,12 @@ namespace mongo {
                                   OperationContext* opCtx,
                                   const StringData& ns,
                                   const StringData& ident,
-                                  const CollectionOptions& options )
+                                  const CollectionOptions& options,
+                                  KVSizeStorer *sizeStorer )
         : RecordStore(ns),
           _db(db),
-          _metadataDict(NULL),
-          _numRecordsMetadataKey(numRecordsMetadataKey(ident)),
-          _dataSizeMetadataKey(dataSizeMetadataKey(ident))
+          _ident(ident.toString()),
+          _sizeStorer(sizeStorer)
     {
         invariant(_db != NULL);
 
@@ -145,81 +146,36 @@ namespace mongo {
             // Need to start at 1 so we are always higher than minDiskLoc
             _nextIdNum.store(1);
         }
+
+        if (_sizeStorer) {
+            long long numRecords;
+            long long dataSize;
+            _sizeStorer->load(_ident, &numRecords, &dataSize);
+            _numRecords.store(numRecords);
+            _dataSize.store(dataSize);
+            _sizeStorer->onCreate(this, _ident, numRecords, dataSize);
+        }
+    }
+
+    KVRecordStore::~KVRecordStore() {
+        if (_sizeStorer) {
+            _sizeStorer->onDestroy(_ident, _numRecords.load(), _dataSize.load());
+        }
     }
 
 #define invariantKVOK(s, expr) massert(28564, expr, s.isOK())
 
-    int64_t KVRecordStore::_getStats(OperationContext *opCtx, const std::string &key) const {
-        Slice valSlice;
-        Status s = _metadataDict->get(opCtx, Slice(key), valSlice);
-        invariantKVOK(s, str::stream() << "KVRecordStore: error getting stats: " << s.toString());
-        return mongo::endian::littleToNative(valSlice.as<int64_t>());
-    }
-
-    void KVRecordStore::_updateStats(OperationContext *opCtx, int64_t numRecordsDelta, int64_t dataSizeDelta) {
-        if (_metadataDict) {
-            int attempt = 1;
-            while (true) {
-                try {
-                    WriteUnitOfWork wuow(opCtx);
-                    KVUpdateIncrementMessage nrMessage(numRecordsDelta);
-                    Status s = _metadataDict->update(opCtx, Slice(_numRecordsMetadataKey), nrMessage);
-                    invariantKVOK(s, str::stream() << "KVRecordStore: error updating numRecords: " << s.toString());
-
-                    KVUpdateIncrementMessage dsMessage(dataSizeDelta);
-                    s = _metadataDict->update(opCtx, Slice(_dataSizeMetadataKey), dsMessage);
-                    invariantKVOK(s, str::stream() << "KVRecordStore: error updating dataSize: " << s.toString());
-                    wuow.commit();
-                    break;
-                } catch (WriteConflictException &e) {
-                    WriteConflictException::logAndBackoff(attempt++, "update", "tokuft.metadata");
-                }
-            }
-        }
-    }
-
-    void KVRecordStore::_initializeStatsForKey(OperationContext *opCtx, const std::string &key) {
-        Slice val;
-        Status s = _metadataDict->get(opCtx, Slice(key), val);
-        if (s.code() == ErrorCodes::NoSuchKey) {
-            int64_t zero = 0;
-            s = _metadataDict->insert(opCtx, Slice(key), Slice::of(zero));
-        }
-        invariant(s.isOK());
-    }
-
-    void KVRecordStore::setStatsMetadataDictionary(OperationContext *opCtx, KVDictionary *metadataDict) {
-        WriteUnitOfWork wuow(opCtx);
-        _metadataDict = metadataDict;
-        _initializeStatsForKey(opCtx, _numRecordsMetadataKey);
-        _initializeStatsForKey(opCtx, _dataSizeMetadataKey);
-        wuow.commit();
-    }
-
-    void KVRecordStore::deleteMetadataKeys(OperationContext *opCtx, KVDictionary *metadataDict, const StringData &ident) {
-        WriteUnitOfWork wuow(opCtx);
-        Status s = metadataDict->remove(opCtx, Slice(numRecordsMetadataKey(ident)));
-        if (!s.isOK() && s.code() == ErrorCodes::NoSuchKey) {
-            // This is ok, it may have been an index, not a record store.
-            return;
-        }
-        invariantKVOK(s, str::stream() << "KVRecordStore: error deleting numRecords metadata: " << s.toString());
-        s = metadataDict->remove(opCtx, Slice(dataSizeMetadataKey(ident)));
-        invariantKVOK(s, str::stream() << "KVRecordStore: error deleting dataSize metadata: " << s.toString());
-        wuow.commit();
-    }
-
     long long KVRecordStore::dataSize( OperationContext* txn ) const {
-        if (_metadataDict) {
-            return _getStats(txn, _dataSizeMetadataKey);
+        if (_sizeStorer) {
+            return _dataSize.load();
         } else {
             return _db->getStats().dataSize;
         }
     }
 
     long long KVRecordStore::numRecords( OperationContext* txn ) const {
-        if (_metadataDict) {
-            return _getStats(txn, _numRecordsMetadataKey);
+        if (_sizeStorer) {
+            return _numRecords.load();
         } else {
             return _db->getStats().numKeys;
         }
@@ -229,6 +185,13 @@ namespace mongo {
                                         BSONObjBuilder* extraInfo,
                                         int infoLevel ) const {
         return _db->getStats().storageSize;
+    }
+
+    void KVRecordStore::_updateStats(long long nrDelta, long long dsDelta) {
+        if (_sizeStorer) {
+            _numRecords.addAndFetch(nrDelta);
+            _dataSize.addAndFetch(dsDelta);
+        }
     }
 
     RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const DiskLoc& loc) {
@@ -277,7 +240,7 @@ namespace mongo {
         Status s = _db->get(txn, key.key(), val);
         invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << s.toString());
 
-        _updateStats(txn, -1, -val.size());
+        _updateStats(-1, -val.size());
 
         s = _db->remove( txn, key.key() );
         invariant(s.isOK());
@@ -303,7 +266,7 @@ namespace mongo {
             return StatusWith<DiskLoc>(status);
         }
 
-        _updateStats(txn, +1, value.size());
+        _updateStats(1, value.size());
 
         return StatusWith<DiskLoc>(loc);
     }
@@ -344,7 +307,7 @@ namespace mongo {
             return StatusWith<DiskLoc>(status);
         }
 
-        _updateStats(txn, numRecordsDelta, dataSizeDelta);
+        _updateStats(numRecordsDelta, dataSizeDelta);
 
         return StatusWith<DiskLoc>(loc);
     }

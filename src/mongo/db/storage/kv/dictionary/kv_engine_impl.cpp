@@ -28,6 +28,8 @@
  *    it in the license file.
  */
 
+#include <boost/thread/mutex.hpp>
+
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
@@ -36,6 +38,21 @@
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 
 namespace mongo {
+
+    KVSizeStorer *KVEngineImpl::getSizeStorer(OperationContext *opCtx) {
+        if (_sizeStorer) {
+            return _sizeStorer.get();
+        }
+        static boost::mutex mutex;
+        boost::mutex::scoped_lock lk(mutex);
+        if (_sizeStorer) {
+            return _sizeStorer.get();
+        }
+        auto_ptr<KVSizeStorer> sizeStorer(new KVSizeStorer(getMetadataDictionary(), newRecoveryUnit()));
+        sizeStorer->loadFromDict(opCtx);
+        _sizeStorer.reset(sizeStorer.release());
+        return _sizeStorer.get();
+    }
 
     /**
      * @param ident Ident is a one time use string. It is used for this instance
@@ -60,23 +77,20 @@ namespace mongo {
                                                const CollectionOptions& options ) {
         auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp()));
         auto_ptr<KVRecordStore> rs;
+        KVSizeStorer *sizeStorer = (persistDictionaryStats()
+                                    ? getSizeStorer(opCtx)
+                                    : NULL);
         // We separated the implementations of capped / non-capped record stores for readability.
         if (options.capped) {
-            rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options));
+            rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options, sizeStorer));
         } else {
-            rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options));
-        }
-        if (persistDictionaryStats()) {
-            rs->setStatsMetadataDictionary(opCtx, getMetadataDictionary());
+            rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options, sizeStorer));
         }
         return rs.release();
     }
 
     Status KVEngineImpl::dropIdent( OperationContext* opCtx,
                                     const StringData& ident ) {
-        if (persistDictionaryStats()) {
-            KVRecordStore::deleteMetadataKeys(opCtx, getMetadataDictionary(), ident);
-        }
         return dropKVDictionary(opCtx, ident);
     }
 
@@ -102,6 +116,20 @@ namespace mongo {
         IndexEntryComparison cmp(Ordering::make(keyPattern));
         auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp)));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
+    }
+
+    Status KVEngineImpl::okToRename( OperationContext* opCtx,
+                                     const StringData& fromNS,
+                                     const StringData& toNS,
+                                     const StringData& ident,
+                                     const RecordStore* originalRecordStore ) const {
+        if (_sizeStorer) {
+            _sizeStorer->store(NULL, ident,
+                               originalRecordStore->numRecords(opCtx),
+                               originalRecordStore->dataSize(opCtx));
+            _sizeStorer->storeIntoDict(opCtx);
+        }
+        return Status::OK();
     }
 
 }
