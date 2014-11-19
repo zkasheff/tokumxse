@@ -39,8 +39,9 @@ namespace mongo {
                                               OperationContext* opCtx,
                                               const StringData& ns,
                                               const StringData& ident,
-                                              const CollectionOptions& options ) :
-        KVRecordStore(db, opCtx, ns, ident, options),
+                                              const CollectionOptions& options,
+                                              KVSizeStorer *sizeStorer) :
+        KVRecordStore(db, opCtx, ns, ident, options, sizeStorer),
         _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
         _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
         _cappedDeleteCallback(NULL) {

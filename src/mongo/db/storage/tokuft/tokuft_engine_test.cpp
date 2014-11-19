@@ -31,6 +31,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/scoped_ptr.hpp>
 
+#include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/db/storage/kv/kv_engine_test_harness.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
@@ -46,17 +47,27 @@ namespace mongo {
             _engine.reset(new TokuFTEngine(_dbpath.path()));
         }
 
-        virtual ~TokuFTEngineHarnessHelper() = default;
+        virtual ~TokuFTEngineHarnessHelper() {
+            _doCleanShutdown();
+        }
 
         virtual KVEngine* getEngine() { return _engine.get(); }
 
         virtual KVEngine* restartEngine() {
-            _engine.reset(nullptr);
+            _doCleanShutdown();
             _engine.reset(new TokuFTEngine(_dbpath.path()));
             return _engine.get();
         }
 
     private:
+        void _doCleanShutdown() {
+            if (_engine) {
+                scoped_ptr<OperationContext> opCtx(new OperationContextNoop(_engine->newRecoveryUnit()));
+                _engine->cleanShutdown(opCtx.get());
+                _engine.reset();
+            }
+        }
+
         unittest::TempDir _dbpath;
 
         boost::scoped_ptr<TokuFTEngine> _engine;

@@ -128,6 +128,7 @@ namespace mongo {
             scoped_ptr<RecordStore> rs;
             MyOperationContext opCtx( engine );
             rs.reset( engine->getRecordStore( &opCtx, ns, ns, CollectionOptions() ) );
+            ASSERT_EQUALS( 1, rs->numRecords( &opCtx ) );
             ASSERT_EQUALS( string("abc"), rs->dataFor( &opCtx, loc ).data() );
         }
 

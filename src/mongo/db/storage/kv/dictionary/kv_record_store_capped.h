@@ -35,6 +35,8 @@
 
 namespace mongo {
 
+    class KVSizeStorer;
+
     // Like a KVRecordStore, but size is capped and inserts
     // may truncate off old records from the beginning.
     class KVRecordStoreCapped : public KVRecordStore {
@@ -44,7 +46,8 @@ namespace mongo {
                              OperationContext* opCtx,
                              const StringData& ns,
                              const StringData& ident,
-                             const CollectionOptions& options );
+                             const CollectionOptions& options,
+                             KVSizeStorer *sizeStorer);
 
         virtual ~KVRecordStoreCapped() { }
 
