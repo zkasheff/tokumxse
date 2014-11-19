@@ -108,7 +108,7 @@ namespace mongo {
     void TokuFTEngine::cleanShutdownImpl(OperationContext *opCtx) {
         invariant(_env.env() != NULL);
 
-        log() << "tokuft-engine: shutdown" << std::endl;
+        log() << "TokuFT: shutdown" << std::endl;
 
         getSizeStorer(opCtx)->storeIntoDict(opCtx);
 
@@ -129,8 +129,10 @@ namespace mongo {
     Status TokuFTEngine::createKVDictionary( OperationContext* opCtx,
                                               const StringData& ident,
                                               const KVDictionary::Comparator &cmp ) {
+        WriteUnitOfWork wuow(opCtx);
         TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, cmp);
         invariant(dict.db().db() != NULL);
+        wuow.commit();
 
         return Status::OK();
     }
@@ -167,7 +169,7 @@ namespace mongo {
         for (DirectoryCursor cur(_env.buffered_cursor(_getDBTxn(opCtx),
                                                       TokuFTDictionary::Comparator(KVDictionary::Comparator::useMemcmp()),
                                                       ftcxx::DB::NullFilter()));
-             cur.ok(); cur.next(key, val)) {
+             cur.next(key, val); ) {
             if (key.size() == 0) {
                 continue;
             }
