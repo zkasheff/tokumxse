@@ -105,10 +105,10 @@ namespace mongo {
 
     TokuFTEngine::~TokuFTEngine() {}
 
-    void TokuFTEngine::cleanShutdown(OperationContext *opCtx) {
+    void TokuFTEngine::cleanShutdownImpl(OperationContext *opCtx) {
         invariant(_env.env() != NULL);
 
-        log() << "tokuft-engine: shutdown" << std::endl;
+        log() << "TokuFT: shutdown" << std::endl;
 
         _metadataDict.reset();
         _env.close();

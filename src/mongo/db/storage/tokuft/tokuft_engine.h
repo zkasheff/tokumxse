@@ -86,7 +86,7 @@ namespace mongo {
             return _metadataDict.get();
         }
 
-        void cleanShutdown(OperationContext* txn);
+        void cleanShutdownImpl(OperationContext* txn);
 
         std::vector<std::string> getAllIdents(OperationContext *opCtx) const;
 
