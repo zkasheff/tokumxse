@@ -127,8 +127,10 @@ namespace mongo {
     Status TokuFTEngine::createKVDictionary( OperationContext* opCtx,
                                               const StringData& ident,
                                               const KVDictionary::Comparator &cmp ) {
+        WriteUnitOfWork wuow(opCtx);
         TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, cmp);
         invariant(dict.db().db() != NULL);
+        wuow.commit();
 
         return Status::OK();
     }
