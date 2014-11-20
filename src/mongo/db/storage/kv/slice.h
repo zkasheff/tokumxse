@@ -34,9 +34,8 @@
 #include <algorithm>
 #include <string>
 
-#include <boost/shared_array.hpp>
-
 #include "mongo/util/assert_util.h"
+#include "mongo/util/shared_buffer.h"
 
 namespace mongo {
 
@@ -66,7 +65,7 @@ namespace mongo {
         {}
 
         explicit Slice(size_t sz)
-            : _buf(new char[sz]),
+            : _buf(SharedBuffer::allocate(sz)),
               _data(_buf.get()),
               _size(sz)
         {}
@@ -100,13 +99,13 @@ namespace mongo {
               _data(NULL),
               _size(0)
         {
-            std::swap(_buf, other._buf);
+            swap(_buf, other._buf);
             std::swap(_data, other._data);
             std::swap(_size, other._size);
         }
 
         Slice& operator=(Slice&& other) {
-            std::swap(_buf, other._buf);
+            swap(_buf, other._buf);
             std::swap(_data, other._data);
             std::swap(_size, other._size);
             return *this;
@@ -131,7 +130,7 @@ namespace mongo {
             return _buf.get();
         }
 
-        boost::shared_array<char>& ownedBuf() {
+        SharedBuffer& ownedBuf() {
             return _buf;
         }
 
@@ -146,7 +145,7 @@ namespace mongo {
         }
 
         Slice owned() const {
-            if (_buf) {
+            if (_buf.get()) {
                 return *this;
             } else {
                 return copy();
@@ -171,7 +170,7 @@ namespace mongo {
         const char *crend() const { return begin(); }
 
     private:
-        boost::shared_array<char> _buf;
+        SharedBuffer _buf;
         const char *_data;
         size_t _size;
     };

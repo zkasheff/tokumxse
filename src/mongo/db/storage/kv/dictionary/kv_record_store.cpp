@@ -208,11 +208,8 @@ namespace mongo {
             }
         }
 
-        // This is obnoxious, no simple path from shared_array to SharedBuffer.
-        SharedBuffer data = SharedBuffer::allocate(value.size());
-        std::copy(value.begin(), value.end(), data.get());
         // Return an owned RecordData that uses the SharedBuffer from `value'
-        return RecordData(data.moveFrom(), value.size());
+        return RecordData(value.ownedBuf().moveFrom(), value.size());
     }
 
     RecordData KVRecordStore::dataFor( OperationContext* txn, const DiskLoc& loc) const {
@@ -545,10 +542,8 @@ namespace mongo {
         // pass to the caller with a shared pointer.
         if (!_savedLoc.isNull() && _savedLoc == loc) {
             Slice val = _savedVal;
-            invariant(val.ownedBuf());
-            SharedBuffer data = SharedBuffer::allocate(val.size());
-            std::copy(val.begin(), val.end(), data.get());
-            return RecordData(data.moveFrom(), val.size());
+            invariant(val.mutableData());
+            return RecordData(val.ownedBuf().moveFrom(), val.size());
         } else {
             // .. otherwise something strange happened and the caller actually
             // wants some other data entirely. we should probably never execute
