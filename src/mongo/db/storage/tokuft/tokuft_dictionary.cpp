@@ -55,6 +55,9 @@ namespace mongo {
                                        const KVDictionary::Comparator &cmp)
         : _db(ftcxx::DBBuilder()
               // TODO: descriptor, options
+              .set_readpagesize(64 << 10)
+              .set_pagesize(4 << 20)
+              .set_compression_method(TOKU_ZLIB_WITHOUT_CHECKSUM_METHOD)
               .set_descriptor(slice2ftslice(cmp.serialize()))
               .open(env, txn, ident.toString().c_str(), NULL,
                     DB_BTREE /* legacy flag */, DB_CREATE, 0644))
