@@ -55,6 +55,9 @@ namespace mongo {
             virtual StorageEngine* create(const StorageGlobalParams& params) const {
                 return new KVHeapStorageEngine();
             }
+            virtual StringData getCanonicalName() const {
+                return "kv_heap";
+            }
         };
 
     } // namespace

@@ -52,6 +52,9 @@ namespace mongo {
         virtual StorageEngine *create(const StorageGlobalParams &params) const {
             return new TokuFTStorageEngine(params.dbpath);
         }
+        virtual StringData getCanonicalName() const {
+            return "tokuft";
+        }
     };
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(TokuFTStorageEngineInit,

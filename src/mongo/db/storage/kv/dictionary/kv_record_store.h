@@ -130,8 +130,6 @@ namespace mongo {
                                              const CollectionScanParams::Direction& dir =
                                              CollectionScanParams::FORWARD ) const;
 
-        virtual RecordIterator* getIteratorForRepair( OperationContext* txn ) const;
-
         virtual std::vector<RecordIterator *> getManyIterators( OperationContext* txn ) const;
 
         virtual Status truncate( OperationContext* txn );

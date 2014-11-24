@@ -332,10 +332,6 @@ namespace mongo {
         return new KVRecordIterator(_db.get(), txn, start, dir);
     }
 
-    RecordIterator* KVRecordStore::getIteratorForRepair( OperationContext* txn ) const {
-        return getIterator(txn);
-    }
-
     std::vector<RecordIterator *> KVRecordStore::getManyIterators( OperationContext* txn ) const {
         std::vector<RecordIterator *> iterators;
         iterators.push_back(getIterator(txn));
