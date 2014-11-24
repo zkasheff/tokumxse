@@ -40,6 +40,7 @@
 #include "mongo/db/repl/handshake_args.h"
 #include "mongo/db/repl/is_master_response.h"
 #include "mongo/db/repl/network_interface_mock.h"
+#include "mongo/db/repl/operation_context_repl_mock.h"
 #include "mongo/db/repl/repl_coordinator.h" // ReplSetReconfigArgs
 #include "mongo/db/repl/repl_coordinator_external_state_mock.h"
 #include "mongo/db/repl/repl_coordinator_impl.h"
@@ -862,7 +863,7 @@ namespace {
     TEST_F(ReplCoordTest, AwaitReplicationStepDown) {
         // Test that a thread blocked in awaitReplication will be woken up and return NotMaster
         // if the node steps down while it is waiting.
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         assertStartSuccess(
                 BSON("_id" << "mySet" <<
                      "version" << 2 <<
@@ -904,7 +905,7 @@ namespace {
         awaiter.reset();
     }
 
-    class OperationContextNoopWithInterrupt : public OperationContextNoop {
+    class OperationContextNoopWithInterrupt : public OperationContextReplMock {
     public:
 
         OperationContextNoopWithInterrupt() : _opID(0), _interruptOp(false) {}
@@ -1031,7 +1032,7 @@ namespace {
     };
 
     TEST_F(StepDownTest, StepDownNotPrimary) {
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         OpTime optime1(100, 1);
         // All nodes are caught up
         ASSERT_OK(getReplCoord()->setMyLastOptime(&txn, optime1));
@@ -1044,7 +1045,7 @@ namespace {
     }
 
     TEST_F(StepDownTest, StepDownTimeoutAcquiringGlobalLock) {
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         OpTime optime1(100, 1);
         // All nodes are caught up
         ASSERT_OK(getReplCoord()->setMyLastOptime(&txn, optime1));
@@ -1053,14 +1054,16 @@ namespace {
 
         simulateSuccessfulElection();
 
-        getExternalState()->setCanAcquireGlobalSharedLock(false);
+        // Make sure stepDown cannot grab the global shared lock
+        Lock::GlobalWrite lk(txn.lockState());
+
         Status status = getReplCoord()->stepDown(&txn, false, Milliseconds(0), Milliseconds(1000));
         ASSERT_EQUALS(ErrorCodes::ExceededTimeLimit, status);
         ASSERT_TRUE(getReplCoord()->getCurrentMemberState().primary());
     }
 
     TEST_F(StepDownTest, StepDownNoWaiting) {
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         OpTime optime1(100, 1);
         // All nodes are caught up
         ASSERT_OK(getReplCoord()->setMyLastOptime(&txn, optime1));
@@ -1111,7 +1114,7 @@ namespace {
                      "version" << 1 <<
                      "members" << BSON_ARRAY(BSON("_id" << 0 << "host" << "test1:1234"))),
                 HostAndPort("test1", 1234));
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         getReplCoord()->setFollowerMode(MemberState::RS_SECONDARY);
 
         ASSERT_TRUE(getReplCoord()->getCurrentMemberState().primary());
@@ -1196,7 +1199,7 @@ namespace {
     };
 
     TEST_F(StepDownTest, StepDownNotCaughtUp) {
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         OpTime optime1(100, 1);
         OpTime optime2(100, 2);
         // No secondary is caught up
@@ -1238,7 +1241,7 @@ namespace {
     }
 
     TEST_F(StepDownTest, StepDownCatchUp) {
-        OperationContextNoop txn;
+        OperationContextReplMock txn;
         OpTime optime1(100, 1);
         OpTime optime2(100, 2);
         // No secondary is caught up
@@ -1283,6 +1286,35 @@ namespace {
 
         ASSERT_OK(runner.getResult());
         ASSERT_TRUE(getReplCoord()->getCurrentMemberState().secondary());
+    }
+
+    TEST_F(StepDownTest, InterruptStepDown) {
+        OperationContextNoopWithInterrupt txn;
+        OpTime optime1(100, 1);
+        OpTime optime2(100, 2);
+        // No secondary is caught up
+        ASSERT_OK(getReplCoord()->setMyLastOptime(&txn, optime2));
+        ASSERT_OK(getReplCoord()->setLastOptime_forTest(rid2, optime1));
+        ASSERT_OK(getReplCoord()->setLastOptime_forTest(rid3, optime1));
+
+        // stepDown where the secondary actually has to catch up before the stepDown can succeed
+        StepDownRunner runner(getReplCoord());
+        runner.setForce(false);
+        runner.setWaitTime(Milliseconds(10000));
+        runner.setStepDownTime(Milliseconds(60000));
+
+        simulateSuccessfulElection();
+        ASSERT_TRUE(getReplCoord()->getCurrentMemberState().primary());
+
+        runner.start(&txn);
+
+        unsigned int opID = 100;
+        txn.setOpID(opID);
+        txn.setInterruptOp(true);
+        getReplCoord()->interrupt(opID);
+
+        ASSERT_EQUALS(ErrorCodes::Interrupted, runner.getResult());
+        ASSERT_TRUE(getReplCoord()->getCurrentMemberState().primary());
     }
 
     TEST_F(ReplCoordTest, GetReplicationModeNone) {

@@ -42,9 +42,7 @@
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/repl/bgsync.h"
-#include "mongo/db/repl/member.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
-#include "mongo/db/repl/rslog.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/hostandport.h"
@@ -78,6 +76,7 @@ namespace repl {
     void SyncSourceFeedback::ensureMe(OperationContext* txn) {
         string myname = getHostName();
         {
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock dlk(txn->lockState(), "local", MODE_X);
             Client::Context ctx(txn, "local");
 
@@ -160,7 +159,7 @@ namespace repl {
         if (hasConnection()) {
             return true;
         }
-        log() << "replset setting syncSourceFeedback to " << host.toString() << rsLog;
+        log() << "replset setting syncSourceFeedback to " << host.toString();
         _connection.reset(new DBClientConnection(false, 0, OplogReader::tcp_timeout));
         string errmsg;
         try {

@@ -242,6 +242,7 @@ namespace mongo {
     }
 
     void IndexScan::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
 
         if (HIT_END == _scanState || INITIALIZING == _scanState) { return; }
@@ -253,6 +254,7 @@ namespace mongo {
     }
 
     void IndexScan::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
 
@@ -276,7 +278,7 @@ namespace mongo {
         }
     }
 
-    void IndexScan::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void IndexScan::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
 
         // The only state we're responsible for holding is what DiskLocs to drop.  If a document

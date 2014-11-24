@@ -76,7 +76,8 @@ namespace mongo {
     class UpdateStage : public PlanStage {
         MONGO_DISALLOW_COPYING(UpdateStage);
     public:
-        UpdateStage(const UpdateStageParams& params,
+        UpdateStage(OperationContext* txn,
+                    const UpdateStageParams& params,
                     WorkingSet* ws,
                     Collection* collection,
                     PlanStage* child);
@@ -86,7 +87,7 @@ namespace mongo {
 
         virtual void saveState();
         virtual void restoreState(OperationContext* opCtx);
-        virtual void invalidate(const DiskLoc& dl, InvalidationType type);
+        virtual void invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type);
 
         virtual std::vector<PlanStage*> getChildren() const;
 
@@ -129,6 +130,9 @@ namespace mongo {
          * Helper for restoring the state of this update.
          */
         Status restoreUpdateState(OperationContext* opCtx);
+
+        // Transactional context.  Not owned by us.
+        OperationContext* _txn;
 
         UpdateStageParams _params;
 

@@ -164,12 +164,7 @@ namespace {
             }
         }
 
-        std::for_each(_stepDownWaiters.begin(),
-                      _stepDownWaiters.end(),
-                      stdx::bind(&ReplicationExecutor::signalEvent,
-                                 &_replExecutor,
-                                 stdx::placeholders::_1));
-        _stepDownWaiters.clear();
+        _signalStepDownWaiters();
 
         _scheduleHeartbeatToTarget(
                 target,
@@ -429,6 +424,10 @@ namespace {
                 }
                 return;
             }
+
+            lk.unlock();
+
+            _externalState->startThreads();
         }
 
         const stdx::function<void (const ReplicationExecutor::CallbackData&)> reconfigFinishFn(

@@ -109,6 +109,7 @@ namespace mongo {
     }
 
     void TextStage::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
 
         for (size_t i = 0; i < _scanners.size(); ++i) {
@@ -117,6 +118,7 @@ namespace mongo {
     }
 
     void TextStage::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
 
@@ -125,12 +127,12 @@ namespace mongo {
         }
     }
 
-    void TextStage::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void TextStage::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
 
         // Propagate invalidate to children.
         for (size_t i = 0; i < _scanners.size(); ++i) {
-            _scanners.mutableVector()[i]->invalidate(dl, type);
+            _scanners.mutableVector()[i]->invalidate(txn, dl, type);
         }
 
         // We store the score keyed by DiskLoc.  We have to toss out our state when the DiskLoc

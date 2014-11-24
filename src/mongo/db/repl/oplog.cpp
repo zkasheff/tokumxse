@@ -56,7 +56,6 @@
 #include "mongo/db/ops/delete.h"
 #include "mongo/db/repl/bgsync.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
-#include "mongo/db/repl/write_concern.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/storage_options.h"
@@ -95,7 +94,6 @@ namespace repl {
         localDB = NULL;
         localOplogMainCollection = NULL;
         localOplogRSCollection = NULL;
-        resetSlaveCache();
     }
 
     // so we can fail the same way
@@ -147,21 +145,11 @@ namespace repl {
         return std::pair<OpTime,long long>(ts, hashNew);
     }
 
-    static void _logOpUninitialized(OperationContext* txn,
-                                    const char *opstr,
-                                    const char *ns,
-                                    const char *logNS,
-                                    const BSONObj& obj,
-                                    BSONObj *o2,
-                                    bool *bb,
-                                    bool fromMigrate ) {
-        uassert(13288, "replSet error write op to db before replSet initialized", str::startsWith(ns, "local.") || *opstr == 'n');
-    }
-
     /** write an op to the oplog that is already built.
         todo : make _logOpRS() call this so we don't repeat ourself?
         */
     OpTime _logOpObjRS(OperationContext* txn, const BSONObj& op) {
+        ScopedTransaction transaction(txn, MODE_IX);
         Lock::DBLock lk(txn->lockState(), "local", MODE_X);
 
         const OpTime ts = op["ts"]._opTime();
@@ -278,6 +266,7 @@ namespace repl {
             return;
         }
 
+        ScopedTransaction transaction(txn, MODE_IX);
         Lock::DBLock lk(txn->lockState(), "local", MODE_IX);
         Lock::CollectionLock lk2(txn->lockState(), rsoplog, MODE_IX);
 
@@ -348,6 +337,7 @@ namespace repl {
             return;
         }
 
+        ScopedTransaction transaction(txn, MODE_IX);
         Lock::DBLock lk(txn->lockState(), "local", MODE_IX);
 
         if( logNS == 0 ) {
@@ -406,10 +396,7 @@ namespace repl {
                           const BSONObj& obj,
                           BSONObj *o2,
                           bool *bb,
-                          bool fromMigrate ) = _logOpUninitialized;
-    void newReplUp() {
-        _logOp = _logOpRS;
-    }
+                          bool fromMigrate ) = _logOpRS;
 
     void oldRepl() { _logOp = _logOpOld; }
 
@@ -475,6 +462,7 @@ namespace repl {
     }
 
     void createOplog(OperationContext* txn) {
+        ScopedTransaction transaction(txn, MODE_X);
         Lock::GlobalWrite lk(txn->lockState());
 
         const char * ns = "local.oplog.$main";
@@ -624,7 +612,7 @@ namespace repl {
                     Timer t;
 
                     const NamespaceString requestNs(ns);
-                    UpdateRequest request(txn, requestNs);
+                    UpdateRequest request(requestNs);
 
                     request.setQuery(o);
                     request.setUpdates(o);
@@ -633,7 +621,7 @@ namespace repl {
                     UpdateLifecycleImpl updateLifecycle(true, requestNs);
                     request.setLifecycle(&updateLifecycle);
 
-                    update(db, request, &debug);
+                    update(txn, db, request, &debug);
 
                     if( t.millis() >= 2 ) {
                         RARELY OCCASIONALLY log() << "warning, repl doing slow updates (no _id field) for " << ns << endl;
@@ -647,7 +635,7 @@ namespace repl {
                     b.append(_id);
 
                     const NamespaceString requestNs(ns);
-                    UpdateRequest request(txn, requestNs);
+                    UpdateRequest request(requestNs);
 
                     request.setQuery(b.done());
                     request.setUpdates(o);
@@ -656,7 +644,7 @@ namespace repl {
                     UpdateLifecycleImpl updateLifecycle(true, requestNs);
                     request.setLifecycle(&updateLifecycle);
 
-                    update(db, request, &debug);
+                    update(txn, db, request, &debug);
                 }
             }
         }
@@ -668,7 +656,7 @@ namespace repl {
             const bool upsert = valueB || convertUpdateToUpsert;
 
             const NamespaceString requestNs(ns);
-            UpdateRequest request(txn, requestNs);
+            UpdateRequest request(requestNs);
 
             request.setQuery(updateCriteria);
             request.setUpdates(o);
@@ -677,7 +665,7 @@ namespace repl {
             UpdateLifecycleImpl updateLifecycle(true, requestNs);
             request.setLifecycle(&updateLifecycle);
 
-            UpdateResult ur = update(db, request, &debug);
+            UpdateResult ur = update(txn, db, request, &debug);
 
             if( ur.numMatched == 0 ) {
                 if( ur.modifiers ) {

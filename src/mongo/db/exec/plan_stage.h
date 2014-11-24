@@ -202,8 +202,8 @@ namespace mongo {
          *
          * Can only be called after saveState.
          *
-         * XXX: We may not need to pass down 'opCtx' if getMore'd queries use the same
-         * OperationContext they were created with.
+         * If the stage needs an OperationContext during its execution, it may keep a handle to the
+         * provided OperationContext (which is valid until the next call to saveState()).
          */
         virtual void restoreState(OperationContext* opCtx) = 0;
 
@@ -213,8 +213,14 @@ namespace mongo {
          * DiskLoc.
          *
          * Can only be called after a saveState but before a restoreState.
+         *
+         * The provided OperationContext should be used if any work needs to be performed during the
+         * invalidate (as the state of the stage must be saved before any calls to invalidate, the
+         * stage's own OperationContext is inactive during the invalidate and should not be used).
          */
-        virtual void invalidate(const DiskLoc& dl, InvalidationType type) = 0;
+        virtual void invalidate(OperationContext* txn,
+                                const DiskLoc& dl,
+                                InvalidationType type) = 0;
 
         /**
          * Retrieve a list of this stage's children. This stage keeps ownership of

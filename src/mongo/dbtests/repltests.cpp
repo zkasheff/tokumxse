@@ -42,7 +42,7 @@
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
 #include "mongo/db/repl/repl_coordinator_mock.h"
-#include "mongo/db/repl/rs.h"
+#include "mongo/db/repl/sync.h"
 #include "mongo/db/ops/update.h"
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/operation_context_impl.h"
@@ -131,6 +131,7 @@ namespace ReplTests {
             return _client.findOne( cllNS(), BSONObj() );
         }
         int count() const {
+            ScopedTransaction transaction(&_txn, MODE_X);
             Lock::GlobalWrite lk(_txn.lockState());
             Client::Context ctx(&_txn,  ns() );
             Database* db = ctx.db();
@@ -151,6 +152,7 @@ namespace ReplTests {
         }
         int opCount() {
             OperationContextImpl txn;
+            ScopedTransaction transaction(&txn, MODE_X);
             Lock::GlobalWrite lk(txn.lockState());
             Client::Context ctx(&txn,  cllNS() );
 
@@ -171,6 +173,7 @@ namespace ReplTests {
             return count;
         }
         void applyAllOperations() {
+            ScopedTransaction transaction(&_txn, MODE_X);
             Lock::GlobalWrite lk(_txn.lockState());
             vector< BSONObj > ops;
             {
@@ -202,6 +205,7 @@ namespace ReplTests {
             }
         }
         void printAll( const char *ns ) {
+            ScopedTransaction transaction(&_txn, MODE_X);
             Lock::GlobalWrite lk(_txn.lockState());
             Client::Context ctx(&_txn,  ns );
 
@@ -223,6 +227,7 @@ namespace ReplTests {
         }
         // These deletes don't get logged.
         void deleteAll( const char *ns ) const {
+            ScopedTransaction transaction(&_txn, MODE_X);
             Lock::GlobalWrite lk(_txn.lockState());
             Client::Context ctx(&_txn,  ns );
             WriteUnitOfWork wunit(&_txn);
@@ -244,6 +249,7 @@ namespace ReplTests {
             wunit.commit();
         }
         void insert( const BSONObj &o ) const {
+            ScopedTransaction transaction(&_txn, MODE_X);
             Lock::GlobalWrite lk(_txn.lockState());
             Client::Context ctx(&_txn,  ns() );
             WriteUnitOfWork wunit(&_txn);
@@ -1389,25 +1395,6 @@ namespace ReplTests {
         }
     };
 
-    /** Check ReplSetConfig::MemberCfg equality */
-    class ReplSetMemberCfgEquality : public Base {
-    public:
-        void run() {
-            ReplSetConfig::MemberCfg m1, m2;
-            verify(m1 == m2);
-            m1.tags["x"] = "foo";
-            verify(m1 != m2);
-            m2.tags["y"] = "bar";
-            verify(m1 != m2);
-            m1.tags["y"] = "bar";
-            verify(m1 != m2);
-            m2.tags["x"] = "foo";
-            verify(m1 == m2);
-            m1.tags.clear();
-            verify(m1 != m2);
-        }
-    };
-
     class SyncTest : public Sync {
     public:
         bool returnEmpty;
@@ -1428,6 +1415,7 @@ namespace ReplTests {
             bool threw = false;
             BSONObj o = BSON("ns" << ns() << "o" << BSON("foo" << "bar") << "o2" << BSON("_id" << "in oplog" << "foo" << "bar"));
 
+            ScopedTransaction transaction(&_txn, MODE_X);
             Lock::GlobalWrite lk(_txn.lockState());
 
             // this should fail because we can't connect
@@ -1517,7 +1505,6 @@ namespace ReplTests {
             add< DeleteOpIsIdBased >();
             add< DatabaseIgnorerBasic >();
             add< DatabaseIgnorerUpdate >();
-            add< ReplSetMemberCfgEquality >();
             add< ShouldRetry >();
         }
     };

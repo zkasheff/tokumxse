@@ -26,7 +26,7 @@
  *    it in the license file.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kWrites
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kWrite
 
 #include "mongo/platform/basic.h"
 
@@ -736,6 +736,7 @@ namespace mongo {
     private:
         bool _lockAndCheckImpl(WriteOpResult* result, bool intentLock=true);
 
+        ScopedTransaction _transaction;
         // Guard object for the write lock on the target database.
         scoped_ptr<Lock::DBLock> _writeLock;
         scoped_ptr<Lock::CollectionLock> _collLock;
@@ -943,6 +944,7 @@ namespace mongo {
         txn(txn),
         request(aRequest),
         currIndex(0),
+        _transaction(txn, MODE_IX),
         _collection(NULL) {
     }
 
@@ -1176,7 +1178,7 @@ namespace mongo {
 
         const NamespaceString nsString(updateItem.getRequest()->getNS());
         const bool isMulti = updateItem.getUpdate()->getMulti();
-        UpdateRequest request(txn, nsString);
+        UpdateRequest request(nsString);
         request.setQuery(updateItem.getUpdate()->getQuery());
         request.setUpdates(updateItem.getUpdate()->getUpdateExpr());
         request.setMulti(isMulti);
@@ -1192,7 +1194,7 @@ namespace mongo {
         bool createCollection = false;
         for ( int fakeLoop = 0; fakeLoop < 1; fakeLoop++ ) {
 
-            UpdateExecutor executor(&request, &txn->getCurOp()->debug());
+            UpdateExecutor executor(txn, &request, &txn->getCurOp()->debug());
             Status status = executor.prepare();
             if (!status.isOK()) {
                 result->setError(toWriteError(status));
@@ -1200,6 +1202,7 @@ namespace mongo {
             }
 
             if ( createCollection ) {
+                ScopedTransaction transaction(txn, MODE_IX);
                 Lock::DBLock lk(txn->lockState(), nsString.db(), MODE_X);
                 Client::Context ctx(txn, nsString.ns(), false /* don't check version */);
                 Database* db = ctx.db();
@@ -1216,6 +1219,7 @@ namespace mongo {
             }
 
             ///////////////////////////////////////////
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock dbLock(txn->lockState(), nsString.db(), MODE_IX);
             Lock::CollectionLock colLock(txn->lockState(),
                                          nsString.ns(),
@@ -1320,7 +1324,7 @@ namespace mongo {
                              WriteOpResult* result ) {
 
         const NamespaceString nss( removeItem.getRequest()->getNS() );
-        DeleteRequest request(txn, nss);
+        DeleteRequest request(nss);
         request.setQuery( removeItem.getDelete()->getQuery() );
         request.setMulti( removeItem.getDelete()->getLimit() != 1 );
         request.setUpdateOpLog(true);
@@ -1333,7 +1337,7 @@ namespace mongo {
         while ( 1 ) {
             try {
 
-                DeleteExecutor executor( &request );
+                DeleteExecutor executor( txn, &request );
                 Status status = executor.prepare();
                 if ( !status.isOK() ) {
                     result->setError(toWriteError(status));

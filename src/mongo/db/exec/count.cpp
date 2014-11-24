@@ -164,6 +164,7 @@ namespace mongo {
     }
 
     void CountStage::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
         if (_child.get()) {
             _child->saveState();
@@ -171,6 +172,7 @@ namespace mongo {
     }
 
     void CountStage::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
         if (_child.get()) {
@@ -178,10 +180,10 @@ namespace mongo {
         }
     }
 
-    void CountStage::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void CountStage::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
         if (_child.get()) {
-            _child->invalidate(dl, type);
+            _child->invalidate(txn, dl, type);
         }
     }
 

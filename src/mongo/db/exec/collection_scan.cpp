@@ -179,7 +179,9 @@ namespace mongo {
         return _iter->isEOF();
     }
 
-    void CollectionScan::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void CollectionScan::invalidate(OperationContext* txn,
+                                    const DiskLoc& dl,
+                                    InvalidationType type) {
         ++_commonStats.invalidates;
 
         // We don't care about mutations since we apply any filters to the result when we (possibly)
@@ -203,6 +205,7 @@ namespace mongo {
     }
 
     void CollectionScan::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
         if (NULL != _iter) {
             _iter->saveState();
@@ -210,6 +213,7 @@ namespace mongo {
     }
 
     void CollectionScan::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
         if (NULL != _iter) {

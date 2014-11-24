@@ -148,6 +148,7 @@ namespace mongo {
     }
 
     void CountScan::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
         if (_hitEnd || (NULL == _btreeCursor.get())) { return; }
 
@@ -156,6 +157,7 @@ namespace mongo {
     }
 
     void CountScan::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
         if (_hitEnd || (NULL == _btreeCursor.get())) { return; }
@@ -201,7 +203,7 @@ namespace mongo {
         checkEnd();
     }
 
-    void CountScan::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void CountScan::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
 
         // The only state we're responsible for holding is what DiskLocs to drop.  If a document

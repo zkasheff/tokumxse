@@ -26,7 +26,7 @@
  *    it in the license file.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kIndexing
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kIndex
 
 #include "mongo/platform/basic.h"
 
@@ -72,6 +72,7 @@ namespace mongo {
         txn.getCurOp()->reset(HostAndPort(), dbInsert);
         NamespaceString ns(_index["ns"].String());
 
+        ScopedTransaction transaction(&txn, MODE_IX);
         Lock::DBLock dlk(txn.lockState(), ns.db(), MODE_X);
         Client::Context ctx(&txn, ns.getSystemIndexesCollection());
 

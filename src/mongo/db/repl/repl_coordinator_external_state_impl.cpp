@@ -46,11 +46,11 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/repl/bgsync.h"
-#include "mongo/db/repl/connections.h"
 #include "mongo/db/repl/isself.h"
 #include "mongo/db/repl/master_slave.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/rs_sync.h"
+#include "mongo/db/repl/scoped_conn.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/s/d_state.h"
 #include "mongo/stdx/functional.h"
@@ -72,17 +72,23 @@ namespace {
 }  // namespace
 
     ReplicationCoordinatorExternalStateImpl::ReplicationCoordinatorExternalStateImpl() :
-        _nextThreadId(0) {}
+        _startedThreads(false)
+        , _nextThreadId(0) {}
     ReplicationCoordinatorExternalStateImpl::~ReplicationCoordinatorExternalStateImpl() {}
 
     void ReplicationCoordinatorExternalStateImpl::startThreads() {
+        boost::lock_guard<boost::mutex> lk(_threadMutex);
+        if (_startedThreads) {
+            return;
+        }
+        log() << "Starting replication applier threads";
         _applierThread.reset(new boost::thread(runSyncThread));
         BackgroundSync* bgsync = BackgroundSync::get();
         _producerThread.reset(new boost::thread(stdx::bind(&BackgroundSync::producerThread,
                                                            bgsync)));
         _syncSourceFeedbackThread.reset(new boost::thread(stdx::bind(&SyncSourceFeedback::run,
                                                                      &_syncSourceFeedback)));
-        newReplUp();
+        _startedThreads = true;
     }
 
     void ReplicationCoordinatorExternalStateImpl::startMasterSlave(OperationContext* txn) {
@@ -90,12 +96,21 @@ namespace {
     }
 
     void ReplicationCoordinatorExternalStateImpl::shutdown() {
-        _syncSourceFeedback.shutdown();
-        _syncSourceFeedbackThread->join();
-        _applierThread->join();
-        BackgroundSync* bgsync = BackgroundSync::get();
-        bgsync->shutdown();
-        _producerThread->join();
+        boost::lock_guard<boost::mutex> lk(_threadMutex);
+        if (_startedThreads) {
+            log() << "Stopping replication applier threads";
+            _syncSourceFeedback.shutdown();
+            _syncSourceFeedbackThread->join();
+            _applierThread->join();
+            BackgroundSync* bgsync = BackgroundSync::get();
+            bgsync->shutdown();
+            _producerThread->join();
+        }
+    }
+
+    void ReplicationCoordinatorExternalStateImpl::initiateOplog(OperationContext* txn) {
+        createOplog(txn);
+        logOpInitiate(txn, BSON("msg" << "initiating set"));
     }
 
     void ReplicationCoordinatorExternalStateImpl::forwardSlaveHandshake() {
@@ -110,6 +125,7 @@ namespace {
         std::string myname = getHostName();
         OID myRID;
         {
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock lock(txn->lockState(), meDatabaseName, MODE_X);
 
             BSONObj me;
@@ -156,6 +172,7 @@ namespace {
             OperationContext* txn,
             const BSONObj& config) {
         try {
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock dbWriteLock(txn->lockState(), configDatabaseName, MODE_X);
             Helpers::putSingleton(txn, configCollectionName, config);
             return Status::OK();
@@ -242,35 +259,6 @@ namespace {
             invariant(db);
             db->clearTmpCollections(txn);
         }
-    }
-
-namespace {
-    class GlobalSharedLockAcquirerImpl :
-            public ReplicationCoordinatorExternalState::GlobalSharedLockAcquirer {
-    public:
-
-        GlobalSharedLockAcquirerImpl() {};
-        virtual ~GlobalSharedLockAcquirerImpl() {};
-
-        virtual bool try_lock(OperationContext* txn, const Milliseconds& timeout) {
-            try {
-                _rlock.reset(new Lock::GlobalRead(txn->lockState(), timeout.total_milliseconds()));
-            }
-            catch (const DBTryLockTimeoutException&) {
-                return false;
-            }
-            return true;
-        }
-
-    private:
-
-        boost::scoped_ptr<Lock::GlobalRead> _rlock;
-    };
-} // namespace
-
-    ReplicationCoordinatorExternalState::GlobalSharedLockAcquirer*
-            ReplicationCoordinatorExternalStateImpl::getGlobalSharedLockAcquirer() {
-        return new GlobalSharedLockAcquirerImpl();
     }
 
 } // namespace repl

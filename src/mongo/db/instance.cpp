@@ -28,7 +28,7 @@
 *    it in the license file.
 */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kCommands
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kCommand
 
 #include "mongo/platform/basic.h"
 
@@ -99,7 +99,7 @@ namespace {
         case dbInsert:
         case dbUpdate:
         case dbDelete:
-            return LogComponent::kWrites;
+            return LogComponent::kWrite;
         default:
             return LogComponent::kQuery;
         }
@@ -554,7 +554,7 @@ namespace {
         op.debug().query = query;
         op.setQuery(query);
 
-        UpdateRequest request(txn, ns);
+        UpdateRequest request(ns);
 
         request.setUpsert(upsert);
         request.setMulti(multi);
@@ -569,10 +569,11 @@ namespace {
         int attempt = 1;
         while ( 1 ) {
             try {
-                UpdateExecutor executor(&request, &op.debug());
+                UpdateExecutor executor(txn, &request, &op.debug());
                 uassertStatusOK(executor.prepare());
 
                 //  Tentatively take an intent lock, fix up if we need to create the collection
+                ScopedTransaction transaction(txn, MODE_IX);
                 Lock::DBLock dbLock(txn->lockState(), ns.db(), MODE_IX);
                 if (dbHolder().get(txn, ns.db()) == NULL) {
                     //  If DB doesn't exist, don't implicitly create it in Client::Context
@@ -593,7 +594,7 @@ namespace {
             }
             catch ( const WriteConflictException& dle ) {
                 if ( multi ) {
-                    log(LogComponent::kWrites) << "Had WriteConflict during multi update, aborting";
+                    log(LogComponent::kWrite) << "Had WriteConflict during multi update, aborting";
                     throw;
                 }
                 WriteConflictException::logAndBackoff( attempt++, "update", ns.toString() );
@@ -603,9 +604,10 @@ namespace {
         //  This is an upsert into a non-existing database, so need an exclusive lock
         //  to avoid deadlock
         {
-            UpdateExecutor executor(&request, &op.debug());
+            UpdateExecutor executor(txn, &request, &op.debug());
             uassertStatusOK(executor.prepare());
 
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock dbLock(txn->lockState(), ns.db(), MODE_X);
             Client::Context ctx(txn, ns);
             Database* db = ctx.db();
@@ -645,7 +647,7 @@ namespace {
         op.debug().query = pattern;
         op.setQuery(pattern);
 
-        DeleteRequest request(txn, ns);
+        DeleteRequest request(ns);
         request.setQuery(pattern);
         request.setMulti(!justOne);
         request.setUpdateOpLog(true);
@@ -655,7 +657,7 @@ namespace {
         int attempt = 1;
         while ( 1 ) {
             try {
-                DeleteExecutor executor(&request);
+                DeleteExecutor executor(txn, &request);
                 uassertStatusOK(executor.prepare());
 
                 AutoGetDb autoDb(txn, ns.db(), MODE_IX);
@@ -968,6 +970,7 @@ namespace {
         {
             const bool isIndexBuild = (nsToCollectionSubstring(ns) == "system.indexes");
             const LockMode mode = isIndexBuild ? MODE_X : MODE_IX;
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock dbLock(txn->lockState(), nsString.db(), mode);
             Lock::CollectionLock collLock(txn->lockState(), nsString.ns(), mode);
 
@@ -995,6 +998,7 @@ namespace {
         }
 
         // Collection didn't exist so try again with MODE_X
+        ScopedTransaction transaction(txn, MODE_IX);
         Lock::DBLock dbLock(txn->lockState(), nsString.db(), MODE_X);
 
         // CONCURRENCY TODO: is being read locked in big log sufficient here?
@@ -1024,14 +1028,14 @@ namespace {
         // Must hold global lock to get to here
         invariant(txn->lockState()->isW());
 
-        log(LogComponent::kNetworking) << "shutdown: going to close listening sockets..." << endl;
+        log(LogComponent::kNetwork) << "shutdown: going to close listening sockets..." << endl;
         ListeningSockets::get()->closeAll();
 
-        log(LogComponent::kNetworking) << "shutdown: going to flush diaglog..." << endl;
+        log(LogComponent::kNetwork) << "shutdown: going to flush diaglog..." << endl;
         _diaglog.flush();
 
         /* must do this before unmapping mem or you may get a seg fault */
-        log(LogComponent::kNetworking) << "shutdown: going to close sockets..." << endl;
+        log(LogComponent::kNetwork) << "shutdown: going to close sockets..." << endl;
         boost::thread close_socket_thread( stdx::bind(MessagingPort::closeAllSockets, 0) );
 
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
@@ -1057,6 +1061,7 @@ namespace {
 
         repl::getGlobalReplicationCoordinator()->shutdown();
 
+        ScopedTransaction transaction(&txn, MODE_X);
         Lock::GlobalWrite lk(txn.lockState());
         log() << "now exiting" << endl;
 

@@ -170,6 +170,7 @@ namespace mongo {
     }
 
     void DistinctScan::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
 
         if (HIT_END == _scanState || INITIALIZING == _scanState) { return; }
@@ -183,6 +184,7 @@ namespace mongo {
     }
 
     void DistinctScan::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
 
@@ -201,7 +203,7 @@ namespace mongo {
         }
     }
 
-    void DistinctScan::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void DistinctScan::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
     }
 

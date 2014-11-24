@@ -68,7 +68,6 @@
 #include "mongo/db/range_deleter_service.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
-#include "mongo/db/repl/rs.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/write_concern.h"
 #include "mongo/logger/ramlog.h"
@@ -299,6 +298,7 @@ namespace mongo {
             // TODO: Change this. This is a bad hack for protecting some of the data structures
             // below that were not properly synchronized with the intended latches in some
             // usages.
+            ScopedTransaction transaction(txn, MODE_IX);
             Lock::DBLock dbLock(txn->lockState(), nsToDatabaseSubstring(_ns), MODE_IX);
             Lock::CollectionLock collLock(txn->lockState(), _ns, MODE_X);
             log() << "MigrateFromStatus::done coll lock for " << _ns << " acquired" << endl;
@@ -696,7 +696,9 @@ namespace mongo {
          */
         class DeleteNotificationStage : public PlanStage {
         public:
-            virtual void invalidate(const DiskLoc& dl, InvalidationType type);
+            virtual void invalidate(OperationContext* txn,
+                                    const DiskLoc& dl,
+                                    InvalidationType type);
 
             virtual StageState work(WorkingSetID* out) {
                 invariant( false );
@@ -738,7 +740,8 @@ namespace mongo {
 
     } migrateFromStatus;
 
-    void MigrateFromStatus::DeleteNotificationStage::invalidate(const DiskLoc& dl,
+    void MigrateFromStatus::DeleteNotificationStage::invalidate(OperationContext *txn,
+                                                                const DiskLoc& dl,
                                                                 InvalidationType type) {
         if ( type == INVALIDATION_DELETION ) {
             migrateFromStatus.aboutToDelete( dl );
@@ -1310,6 +1313,7 @@ namespace mongo {
                 myVersion.incMajor();
 
                 {
+                    ScopedTransaction transaction(txn, MODE_IX);
                     Lock::DBLock lk(txn->lockState(), nsToDatabaseSubstring(ns), MODE_IX);
                     Lock::CollectionLock collLock(txn->lockState(), ns, MODE_X);
                     verify( myVersion > shardingState.getVersion( ns ) );
@@ -1346,6 +1350,7 @@ namespace mongo {
                     log() << "moveChunk migrate commit not accepted by TO-shard: " << res
                           << " resetting shard version to: " << origShardVersion << migrateLog;
                     {
+                        ScopedTransaction transaction(txn, MODE_IX);
                         Lock::DBLock dbLock(txn->lockState(), nsToDatabaseSubstring(ns), MODE_IX);
                         Lock::CollectionLock collLock(txn->lockState(), ns, MODE_X);
 
@@ -1520,6 +1525,7 @@ namespace mongo {
                           << "failed migration" << endl;
 
                     {
+                        ScopedTransaction transaction(txn, MODE_IX);
                         Lock::DBLock dbLock(txn->lockState(), nsToDatabaseSubstring(ns), MODE_IX);
                         Lock::CollectionLock collLock(txn->lockState(), ns, MODE_X);
 
@@ -1728,6 +1734,7 @@ namespace mongo {
 
             if ( getState() != DONE ) {
                 // Unprotect the range if needed/possible on unsuccessful TO migration
+                ScopedTransaction transaction(txn, MODE_IX);
                 Lock::DBLock dbLock(txn->lockState(), nsToDatabaseSubstring(ns), MODE_IX);
                 Lock::CollectionLock collLock(txn->lockState(), ns, MODE_X);
 
@@ -1789,6 +1796,7 @@ namespace mongo {
                     indexSpecs.insert(indexSpecs.begin(), indexes.begin(), indexes.end());
                 }
 
+                ScopedTransaction transaction(txn, MODE_IX);
                 Lock::DBLock lk(txn->lockState(),  nsToDatabaseSubstring(ns), MODE_X);
                 Client::Context ctx(txn,  ns);
                 Database* db = ctx.db();
@@ -1874,6 +1882,7 @@ namespace mongo {
 
                 {
                     // Protect the range by noting that we're now starting a migration to it
+                    ScopedTransaction transaction(txn, MODE_IX);
                     Lock::DBLock dbLock(txn->lockState(), nsToDatabaseSubstring(ns), MODE_IX);
                     Lock::CollectionLock collLock(txn->lockState(), ns, MODE_X);
 
@@ -2157,6 +2166,7 @@ namespace mongo {
             bool didAnything = false;
 
             if ( xfer["deleted"].isABSONObj() ) {
+                ScopedTransaction transaction(txn, MODE_IX);
                 Lock::DBLock dlk(txn->lockState(), nsToDatabaseSubstring(ns), MODE_IX);
                 Helpers::RemoveSaver rs( "moveChunk" , ns , "removedDuring" );
 
@@ -2288,6 +2298,7 @@ namespace mongo {
 
             {
                 // Get global lock to wait for write to be commited to journal.
+                ScopedTransaction transaction(txn, MODE_S);
                 Lock::GlobalRead lk(txn->lockState());
 
                 // if durability is on, force a write to journal

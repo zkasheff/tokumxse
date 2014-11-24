@@ -71,8 +71,12 @@
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/query/internal_plans.h"
 #include "mongo/db/range_deleter_service.h"
+#include "mongo/db/repl/network_interface_impl.h"
+#include "mongo/db/repl/repl_coordinator_external_state_impl.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/repl_coordinator_impl.h"
 #include "mongo/db/repl/repl_settings.h"
+#include "mongo/db/repl/topology_coordinator_impl.h"
 #include "mongo/db/restapi.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/db/startup_warnings_mongod.h"
@@ -248,6 +252,7 @@ namespace mongo {
 
         OperationContextImpl txn;
 
+        ScopedTransaction transaction(&txn, MODE_X);
         Lock::GlobalWrite lk(txn.lockState());
         AutoGetOrCreateDb autoDb(&txn, "local", mongo::MODE_X);
         Database* db = autoDb.getDb();
@@ -306,6 +311,7 @@ namespace mongo {
      */
     static unsigned long long checkIfReplMissingFromCommandLine(OperationContext* txn) {
         // This is helpful for the query below to work as you can't open files when readlocked
+        ScopedTransaction transaction(txn, MODE_X);
         Lock::GlobalWrite lk(txn->lockState());
         if (!repl::getGlobalReplicationCoordinator()->getSettings().usingReplSets()) {
             DBDirectClient c(txn);
@@ -318,6 +324,7 @@ namespace mongo {
         LOG(1) << "enter repairDatabases (to check pdfile version #)" << endl;
 
         OperationContextImpl txn;
+        ScopedTransaction transaction(&txn, MODE_X);
         Lock::GlobalWrite lk(txn.lockState());
 
         vector<string> dbNames;
@@ -537,32 +544,11 @@ namespace mongo {
             web.detach();
         }
 
-        startClientCursorMonitor();
-
-        PeriodicTask::startRunningPeriodicTasks();
-
         {
             OperationContextImpl txn;
 
-            const unsigned long long missingRepl = checkIfReplMissingFromCommandLine(&txn);
-            if (missingRepl) {
-                log() << startupWarningsLog;
-                log() << "** WARNING: mongod started without --replSet yet " << missingRepl
-                      << " documents are present in local.system.replset" << startupWarningsLog;
-                log() << "**          Restart with --replSet unless you are doing maintenance and "
-                      << " no other clients are connected." << startupWarningsLog;
-                log() << "**          The TTL collection monitor will not start because of this." 
-                      << startupWarningsLog;
-                log() << "**         ";
-                log() << " For more info see http://dochub.mongodb.org/core/ttlcollections";
-                log() << startupWarningsLog;
-            }
-            else {
-                startTTLBackgroundJob();
-            }
-
 #ifndef _WIN32
-        mongo::signalForkSuccess();
+            mongo::signalForkSuccess();
 #endif
 
             Status status = authindex::verifySystemIndexes(&txn);
@@ -598,7 +584,29 @@ namespace mongo {
             restartInProgressIndexesFromLastShutdown(&txn);
 
             repl::getGlobalReplicationCoordinator()->startReplication(&txn);
+
+            const unsigned long long missingRepl = checkIfReplMissingFromCommandLine(&txn);
+            if (missingRepl) {
+                log() << startupWarningsLog;
+                log() << "** WARNING: mongod started without --replSet yet " << missingRepl
+                      << " documents are present in local.system.replset" << startupWarningsLog;
+                log() << "**          Restart with --replSet unless you are doing maintenance and "
+                      << " no other clients are connected." << startupWarningsLog;
+                log() << "**          The TTL collection monitor will not start because of this." 
+                      << startupWarningsLog;
+                log() << "**         ";
+                log() << " For more info see http://dochub.mongodb.org/core/ttlcollections";
+                log() << startupWarningsLog;
+            }
+            else {
+                startTTLBackgroundJob();
+            }
+
         }
+
+        startClientCursorMonitor();
+
+        PeriodicTask::startRunningPeriodicTasks();
 
         logStartup();
 
@@ -765,6 +773,19 @@ MONGO_INITIALIZER_GENERAL(CreateAuthorizationManager,
     AuthorizationManager* authzManager =
             new AuthorizationManager(new AuthzManagerExternalStateMongod());
     setGlobalAuthorizationManager(authzManager);
+    return Status::OK();
+}
+
+MONGO_INITIALIZER_WITH_PREREQUISITES(CreateReplicationManager, ("SetGlobalEnvironment"))
+        (InitializerContext* context) {
+    repl::ReplicationCoordinatorImpl* replCoord = new repl::ReplicationCoordinatorImpl(
+            getGlobalReplSettings(),
+            new repl::ReplicationCoordinatorExternalStateImpl,
+            new repl::NetworkInterfaceImpl,
+            new repl::TopologyCoordinatorImpl(Seconds(repl::maxSyncSourceLagSecs)),
+            static_cast<int64_t>(curTimeMillis64()));
+    repl::setGlobalReplicationCoordinator(replCoord);
+    getGlobalEnvironment()->registerKillOpListener(replCoord);
     return Status::OK();
 }
 

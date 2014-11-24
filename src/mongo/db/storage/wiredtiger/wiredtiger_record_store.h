@@ -48,6 +48,8 @@ namespace mongo {
     class WiredTigerRecoveryUnit;
     class WiredTigerSizeStorer;
 
+    extern const std::string kWiredTigerEngineName;
+
     class WiredTigerRecordStore : public RecordStore {
     public:
 
@@ -55,7 +57,7 @@ namespace mongo {
          * Creates a configuration string suitable for 'config' parameter in WT_SESSION::create().
          * Configuration string is constructed from:
          *     built-in defaults
-         *     storageEngine.wiredtiger.configString in 'options'
+         *     storageEngine.wiredTiger.configString in 'options'
          *     'extraStrings'
          * Performs simple validation on the supplied parameters.
          * Returns error status if validation fails.
@@ -78,7 +80,7 @@ namespace mongo {
         virtual ~WiredTigerRecordStore();
 
         // name of the RecordStore implementation
-        virtual const char* name() const { return "wiredtiger"; }
+        virtual const char* name() const;
 
         virtual long long dataSize( OperationContext *txn ) const;
 
@@ -124,8 +126,6 @@ namespace mongo {
                                              const DiskLoc& start = DiskLoc(),
                                              const CollectionScanParams::Direction& dir =
                                              CollectionScanParams::FORWARD ) const;
-
-        virtual RecordIterator* getIteratorForRepair( OperationContext* txn ) const;
 
         virtual std::vector<RecordIterator*> getManyIterators( OperationContext* txn ) const;
 

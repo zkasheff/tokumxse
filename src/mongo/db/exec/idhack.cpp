@@ -173,15 +173,17 @@ namespace mongo {
     }
 
     void IDHackStage::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
     }
 
     void IDHackStage::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
     }
 
-    void IDHackStage::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void IDHackStage::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
 
         // It's possible that the loc getting invalidated is the one we're about to

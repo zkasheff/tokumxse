@@ -35,6 +35,8 @@
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_parameters.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_server_status.h"
 #include "mongo/db/storage_options.h"
 
@@ -52,7 +54,12 @@ namespace mongo {
                 kv->setSortedDataInterfaceExtraOptions( wiredTigerGlobalOptions.indexConfig );
                 // Intentionally leaked.
                 new WiredTigerServerStatusSection(kv);
+                new WiredTigerEngineRuntimeConfigSetting(kv);
                 return new KVStorageEngine( kv );
+            }
+
+            virtual StringData getCanonicalName() const {
+                return kWiredTigerEngineName;
             }
         };
     } // namespace
@@ -60,9 +67,17 @@ namespace mongo {
     MONGO_INITIALIZER_WITH_PREREQUISITES(WiredTigerEngineInit,
                                          ("SetGlobalEnvironment"))
         (InitializerContext* context ) {
-        getGlobalEnvironment()->registerStorageEngine("wiredtiger", new WiredTigerFactory() );
+
+        // XXX: These cannot be the same WiredTigerFactory instance because
+        //      some environments delete each registered factory separately.
+        getGlobalEnvironment()->registerStorageEngine(kWiredTigerEngineName,
+                                                      new WiredTigerFactory());
+
+        // Allow --storageEngine=wiredtiger to be specified on the command line
+        // (for backwards compatibility).
+        getGlobalEnvironment()->registerStorageEngine("wiredtiger", new WiredTigerFactory());
+
         return Status::OK();
     }
 
 }
-

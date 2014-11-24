@@ -303,6 +303,7 @@ namespace mongo {
     }
 
     void NearStage::saveState() {
+        _txn = NULL;
         ++_stats->common.yields;
         for (size_t i = 0; i < _childrenIntervals.size(); i++) {
             _childrenIntervals[i]->covering->saveState();
@@ -310,6 +311,7 @@ namespace mongo {
     }
 
     void NearStage::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_stats->common.unyields;
         for (size_t i = 0; i < _childrenIntervals.size(); i++) {
@@ -317,10 +319,10 @@ namespace mongo {
         }
     }
 
-    void NearStage::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void NearStage::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_stats->common.invalidates;
         for (size_t i = 0; i < _childrenIntervals.size(); i++) {
-            _childrenIntervals[i]->covering->invalidate(dl, type);
+            _childrenIntervals[i]->covering->invalidate(txn, dl, type);
         }
 
         // If a result is in _resultBuffer and has a DiskLoc it will be in _nextIntervalSeen as
@@ -332,7 +334,7 @@ namespace mongo {
 
             WorkingSetMember* member = _workingSet->get(seenIt->second);
             verify(member->hasLoc());
-            WorkingSetCommon::fetchAndInvalidateLoc(_txn, member, _collection);
+            WorkingSetCommon::fetchAndInvalidateLoc(txn, member, _collection);
             verify(!member->hasLoc());
 
             // Don't keep it around in the seen map since there's no valid DiskLoc anymore

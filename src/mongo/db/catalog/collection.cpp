@@ -253,7 +253,7 @@ namespace mongo {
         BSONObj doc = docFor( txn, loc );
 
         /* check if any cursors point to us.  if so, advance them. */
-        _cursorCache.invalidateDocument(loc, INVALIDATION_DELETION);
+        _cursorCache.invalidateDocument(txn, loc, INVALIDATION_DELETION);
 
         _indexCatalog.unindexRecord(txn, doc, loc, false);
 
@@ -281,7 +281,7 @@ namespace mongo {
         }
 
         /* check if any cursors point to us.  if so, advance them. */
-        _cursorCache.invalidateDocument(loc, INVALIDATION_DELETION);
+        _cursorCache.invalidateDocument(txn, loc, INVALIDATION_DELETION);
 
         _indexCatalog.unindexRecord(txn, doc, loc, noWarn);
 
@@ -390,7 +390,7 @@ namespace mongo {
         }
 
         // Broadcast the mutation so that query results stay correct.
-        _cursorCache.invalidateDocument(oldLocation, INVALIDATION_MUTATION);
+        _cursorCache.invalidateDocument(txn, oldLocation, INVALIDATION_MUTATION);
 
         return newLocation;
     }
@@ -400,7 +400,7 @@ namespace mongo {
                                                const char* oldBuffer,
                                                size_t oldSize ) {
         moveCounter.increment();
-        _cursorCache.invalidateDocument(oldLocation, INVALIDATION_DELETION);
+        _cursorCache.invalidateDocument(txn, oldLocation, INVALIDATION_DELETION);
         _indexCatalog.unindexRecord(txn, BSONObj(oldBuffer), oldLocation, true);
         return Status::OK();
     }
@@ -413,7 +413,7 @@ namespace mongo {
                                                   const mutablebson::DamageVector& damages ) {
 
         // Broadcast the mutation so that query results stay correct.
-        _cursorCache.invalidateDocument(loc, INVALIDATION_MUTATION);
+        _cursorCache.invalidateDocument(txn, loc, INVALIDATION_MUTATION);
 
         return _recordStore->updateWithDamages( txn, loc, oldRec, damageSource, damages );
     }
@@ -557,7 +557,7 @@ namespace mongo {
                 IndexCatalog::IndexIterator i = _indexCatalog.getIndexIterator(txn, false);
                 while( i.more() ) {
                     const IndexDescriptor* descriptor = i.next();
-                    log(LogComponent::kIndexing) << "validating index " << descriptor->indexNamespace() << endl;
+                    log(LogComponent::kIndex) << "validating index " << descriptor->indexNamespace() << endl;
                     IndexAccessMethod* iam = _indexCatalog.getIndex( descriptor );
                     invariant( iam );
 

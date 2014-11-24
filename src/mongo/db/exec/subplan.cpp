@@ -490,6 +490,7 @@ namespace mongo {
     }
 
     void SubplanStage::saveState() {
+        _txn = NULL;
         ++_commonStats.yields;
         if (_killed) {
             return;
@@ -503,6 +504,7 @@ namespace mongo {
     }
 
     void SubplanStage::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         ++_commonStats.unyields;
         if (_killed) {
@@ -516,14 +518,14 @@ namespace mongo {
         }
     }
 
-    void SubplanStage::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void SubplanStage::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         ++_commonStats.invalidates;
         if (_killed) {
             return;
         }
 
         if (NULL != _child.get()) {
-            _child->invalidate(dl, type);
+            _child->invalidate(txn, dl, type);
         }
     }
 

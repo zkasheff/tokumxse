@@ -51,6 +51,7 @@ namespace repl {
         virtual void startThreads();
         virtual void startMasterSlave(OperationContext*);
         virtual void shutdown();
+        virtual void initiateOplog(OperationContext* txn);
         virtual void forwardSlaveHandshake();
         virtual void forwardSlaveProgress();
         virtual OID ensureMe(OperationContext*);
@@ -62,8 +63,6 @@ namespace repl {
         virtual void closeConnections();
         virtual void clearShardingState();
         virtual void signalApplierToChooseNewSyncSource();
-        virtual ReplicationCoordinatorExternalState::GlobalSharedLockAcquirer*
-                getGlobalSharedLockAcquirer();
         virtual OperationContext* createOperationContext(const std::string& threadName);
         virtual void dropAllTempCollections(OperationContext* txn);
 
@@ -82,12 +81,6 @@ namespace repl {
          * Sets the return value for subsequent calls to getClientHostAndPort().
          */
         void setClientHostAndPort(const HostAndPort& clientHostAndPort);
-
-        /**
-         * Sets the value that will be passed to the constructor of any future
-         * GlobalSharedLockAcuirers created and returned by getGlobalSharedLockAcquirer().
-         */
-        void setCanAcquireGlobalSharedLock(bool canAcquire);
 
         /**
          * Sets the return value for subsequent calls to loadLastOpTimeApplied.
@@ -119,25 +112,6 @@ namespace repl {
         bool _connectionsClosed;
         HostAndPort _clientHostAndPort;
     };
-
-    class ReplicationCoordinatorExternalStateMock::GlobalSharedLockAcquirer :
-            public ReplicationCoordinatorExternalState::GlobalSharedLockAcquirer {
-    public:
-
-        /**
-         * The canAcquireLock argument determines what the return value of calls to try_lock will
-         * be.
-         */
-        GlobalSharedLockAcquirer(bool canAcquireLock);
-        virtual ~GlobalSharedLockAcquirer();
-
-        virtual bool try_lock(OperationContext* txn, const Milliseconds& timeout);
-
-    private:
-
-        const bool _canAcquireLock;
-    };
-
 
 } // namespace repl
 } // namespace mongo

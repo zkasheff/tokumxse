@@ -34,9 +34,11 @@
 #include "mongo/db/repl/sync_tail.h"
 
 #include <boost/functional/hash.hpp>
+#include <boost/ref.hpp>
 #include "third_party/murmurhash3/MurmurHash3.h"
 
 #include "mongo/base/counter.h"
+#include "mongo/db/auth/authorization_session.h"
 #include "mongo/db/catalog/database.h"
 #include "mongo/db/catalog/database_holder.h"
 #include "mongo/db/commands/fsync.h"
@@ -49,8 +51,6 @@
 #include "mongo/db/repl/minvalid.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/repl/repl_coordinator_global.h"
-#include "mongo/db/repl/rs.h"
-#include "mongo/db/repl/rslog.h"
 #include "mongo/db/stats/timer_stats.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/util/exit.h"
@@ -86,7 +86,7 @@ namespace repl {
     void initializePrefetchThread() {
         if (!ClientBasic::getCurrent()) {
             Client::initThreadIfNotAlready();
-            replLocalAuth();
+            cc().getAuthorizationSession()->grantInternalAuthorization();
         }
     }
     namespace {
@@ -229,7 +229,7 @@ namespace repl {
             // this is often a no-op
             // but can't be 100% sure
             if( *op.getStringField("op") != 'n' ) {
-                error() << "replSet skipping bad op in oplog: " << op.toString() << rsLog;
+                error() << "replSet skipping bad op in oplog: " << op.toString();
             }
             return true;
         }
@@ -437,7 +437,7 @@ namespace repl {
                 }
                 else if (currentOpTime > endOpTime) {
                     severe() << "Applied past expected end " << endOpTime << " to " << currentOpTime
-                            << " without seeing it. Rollback?" << rsLog;
+                            << " without seeing it. Rollback?";
                     fassertFailedNoTrace(18693);
                 }
 
@@ -473,6 +473,7 @@ namespace repl {
 
 namespace {
     void tryToGoLiveAsASecondary(OperationContext* txn, ReplicationCoordinator* replCoord) {
+        ScopedTransaction transaction(txn, MODE_S);
         Lock::GlobalRead readLock(txn->lockState());
 
         if (replCoord->getMaintenanceMode()) {
@@ -527,25 +528,6 @@ namespace {
                     BackgroundSync* bgsync = BackgroundSync::get();
                     if (bgsync->getInitialSyncRequestedFlag()) {
                         // got a resync command
-                        Lock::DBLock lk(txn.lockState(), "local", MODE_X);
-                        WriteUnitOfWork wunit(&txn);
-                        Client::Context ctx(&txn, "local");
-
-                        ctx.db()->dropCollection(&txn, "local.oplog.rs");
-
-                        // Note: the following order is important.
-                        // The bgsync thread uses an empty optime as a sentinel to know to wait
-                        // for initial sync (done in this thread after we return); thus, we must
-                        // ensure the lastAppliedOptime is empty before pausing the bgsync thread
-                        // via stop().
-                        // We must clear the sync source blacklist after calling stop()
-                        // because the bgsync thread, while running, may update the blacklist.
-                        replCoord->setMyLastOptime(&txn, OpTime());
-                        bgsync->stop();
-                        replCoord->clearSyncSourceBlacklist();
-
-                        wunit.commit();
-
                         return;
                     }
                     lastTimeChecked = now;
@@ -553,26 +535,6 @@ namespace {
                     // we have to check this before calling mgr, as we must be a secondary to
                     // become primary
                     tryToGoLiveAsASecondary(&txn, replCoord);
-
-                    // TODO(emilkie): This can be removed once we switch over from legacy;
-                    // this code is what moves 1-node sets to PRIMARY state.
-                    // normally msgCheckNewState gets called periodically, but in a single node
-                    // replset there are no heartbeat threads, so we do it here to be sure.  this is
-                    // relevant if the singleton member has done a stepDown() and needs to come back
-                    // up.
-                    if (theReplSet &&
-                            theReplSet->config().members.size() == 1 &&
-                            theReplSet->myConfig().potentiallyHot()) {
-                        Manager* mgr = theReplSet->mgr;
-                        // When would mgr be null?  During replsettest'ing, in which case we should
-                        // fall through and actually apply ops as if we were a real secondary.
-                        if (mgr) { 
-                            mgr->send(stdx::bind(&Manager::msgCheckNewState, theReplSet->mgr));
-                            sleepsecs(1);
-                            // There should never be ops to sync in a 1-member set, anyway
-                            return;
-                        }
-                    }
                 }
 
                 const int slaveDelaySecs = replCoord->getSlaveDelaySecs().total_seconds();
@@ -612,16 +574,6 @@ namespace {
             OpTime minValid = lastOp["ts"]._opTime();
             setMinValid(&txn, minValid);
             multiApply(ops.getDeque());
-
-            // If we're just testing (no manager), don't keep looping if we exhausted the bgqueue
-            // TODO(spencer): Remove repltest.cpp dbtest or make this work with the new replication
-            // coordinator
-            if (theReplSet && !theReplSet->mgr) {
-                BSONObj op;
-                if (!peek(&op)) {
-                    return;
-                }
-            }
         }
     }
 
@@ -695,6 +647,7 @@ namespace {
         OpTime lastOpTime;
         {
             OperationContextImpl txn; // XXX?
+            ScopedTransaction transaction(&txn, MODE_IX);
             Lock::DBLock lk(txn.lockState(), "local", MODE_X);
             WriteUnitOfWork wunit(&txn);
 
@@ -732,7 +685,7 @@ namespace {
                 }
                 else {
                     warning() << "replSet slavedelay causing a long sleep of " << sleeptime
-                              << " seconds" << rsLog;
+                              << " seconds";
                     // sleep(hours) would prevent reconfigs from taking effect & such!
                     long long waitUntil = b + sleeptime;
                     while(time(0) < waitUntil) {
@@ -753,7 +706,7 @@ namespace {
         // Only do this once per thread
         if (!ClientBasic::getCurrent()) {
             Client::initThreadIfNotAlready();
-            replLocalAuth();
+            cc().getAuthorizationSession()->grantInternalAuthorization();
         }
     }
 
@@ -805,6 +758,7 @@ namespace {
                 if (!st->syncApply(&txn, *it)) {
                     bool status;
                     {
+                        ScopedTransaction transaction(&txn, MODE_X);
                         Lock::GlobalWrite lk(txn.lockState());
                         status = st->shouldRetry(&txn, *it);
                     }

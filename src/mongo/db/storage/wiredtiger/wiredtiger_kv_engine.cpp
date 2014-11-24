@@ -301,8 +301,8 @@ namespace mongo {
                                                                      const StringData& ident,
                                                                      const IndexDescriptor* desc ) {
         if ( desc->unique() )
-            return new WiredTigerIndexUnique( _uri( ident ) );
-        return new WiredTigerIndexStandard( _uri( ident ) );
+            return new WiredTigerIndexUnique( _uri( ident ), desc );
+        return new WiredTigerIndexStandard( _uri( ident ), desc );
     }
 
     Status WiredTigerKVEngine::dropIdent( OperationContext* opCtx,
@@ -416,5 +416,9 @@ namespace mongo {
         }
 
         return all;
+    }
+
+    int WiredTigerKVEngine::reconfigure(const char* str) {
+        return _conn->reconfigure(_conn, str);
     }
 }

@@ -215,8 +215,9 @@ namespace {
         return s->create(s, uri.c_str(), config.c_str());
     }
 
-    WiredTigerIndex::WiredTigerIndex(const std::string &uri )
-        : _uri( uri ),
+    WiredTigerIndex::WiredTigerIndex(const std::string& uri, const IndexDescriptor* desc)
+        : _ordering(Ordering::make(desc->keyPattern())),
+          _uri( uri ),
           _instanceId( WiredTigerSession::genCursorId() ) {
     }
 
@@ -355,23 +356,28 @@ namespace {
     class WiredTigerIndex::BulkBuilder : public SortedDataBuilderInterface {
     public:
         BulkBuilder(WiredTigerIndex* idx, OperationContext* txn)
-            : _txn(txn), _cursor(openBulkCursor(idx, txn)) {
-        }
+            : _ordering(idx->_ordering)
+            , _txn(txn)
+            , _session(WiredTigerRecoveryUnit::get(_txn)->getSessionCache()->getSession())
+            , _cursor(openBulkCursor(idx))
+        {}
 
         ~BulkBuilder() {
             _cursor->close(_cursor);
+            WiredTigerRecoveryUnit::get(_txn)->getSessionCache()->releaseSession(_session);
         }
 
     protected:
-        static WT_CURSOR* openBulkCursor(WiredTigerIndex* idx, OperationContext* txn) {
-            // Not using cursor cache since we need to set "bulk".
-            WT_CURSOR* cursor;
-            WiredTigerSession* sessionWrapper = WiredTigerRecoveryUnit::get(txn)->getSession();
-            WT_SESSION* session = sessionWrapper->getSession();
+        WT_CURSOR* openBulkCursor(WiredTigerIndex* idx) {
             // Open cursors can cause bulk open_cursor to fail with EBUSY.
             // TODO any other cases that could cause EBUSY?
-            sessionWrapper->closeAllCursors();
+            WiredTigerSession* outerSession = WiredTigerRecoveryUnit::get(_txn)->getSession();
+            outerSession->closeAllCursors();
 
+            // Not using cursor cache since we need to set "bulk".
+            WT_CURSOR* cursor;
+            // We use our own session to ensure we aren't in a transaction.
+            WT_SESSION* session = _session->getSession();
             int err = session->open_cursor(session, idx->uri().c_str(), NULL, "bulk", &cursor);
             if (!err)
                 return cursor;
@@ -383,7 +389,9 @@ namespace {
             return cursor;
         }
 
+        const Ordering _ordering;
         OperationContext* const _txn;
+        WiredTigerSession* const _session;
         WT_CURSOR* const _cursor;
     };
 
@@ -453,7 +461,7 @@ namespace {
                     return s;
             }
 
-            const int cmp = newKey.woCompare(_key);
+            const int cmp = newKey.woCompare(_key, _ordering);
             if (cmp != 0) {
                 if (!_key.isEmpty()) { // _key.isEmpty() is only true on the first call to addKey().
                     invariant(cmp > 0); // newKey must be > the last key
@@ -784,8 +792,9 @@ namespace {
 
     // ------------------------------
 
-    WiredTigerIndexUnique::WiredTigerIndexUnique( const std::string& uri )
-        : WiredTigerIndex( uri ) {
+    WiredTigerIndexUnique::WiredTigerIndexUnique( const std::string& uri,
+                                                  const IndexDescriptor* desc )
+        : WiredTigerIndex( uri, desc ) {
     }
 
     Status WiredTigerIndexUnique::_insert( WT_CURSOR* c,
@@ -912,8 +921,9 @@ namespace {
 
     // ------------------------------
 
-    WiredTigerIndexStandard::WiredTigerIndexStandard( const std::string& uri )
-        : WiredTigerIndex( uri ) {
+    WiredTigerIndexStandard::WiredTigerIndexStandard( const std::string& uri,
+                                                      const IndexDescriptor* desc )
+        : WiredTigerIndex( uri, desc ) {
     }
 
     Status WiredTigerIndexStandard::_insert( WT_CURSOR* c,

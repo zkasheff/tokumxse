@@ -664,36 +664,23 @@ serverOnlyFiles = [ "db/background.cpp",
                     "db/range_deleter_db_env.cpp",
                     "db/range_deleter_service.cpp",
                     "db/repl/bgsync.cpp",
-                    "db/repl/connections.cpp",
-                    "db/repl/consensus.cpp",
-                    "db/repl/health.cpp",
-                    "db/repl/heartbeat.cpp",
-                    "db/repl/heartbeat_info.cpp",
                     "db/repl/initial_sync.cpp",
-                    "db/repl/manager.cpp",
                     "db/repl/master_slave.cpp",
-                    "db/repl/member.cpp",
                     "db/repl/minvalid.cpp",
                     "db/repl/multicmd.cpp",
                     "db/repl/oplog.cpp",
                     "db/repl/oplogreader.cpp",
                     "db/repl/repl_coordinator_external_state_impl.cpp",
-                    "db/repl/repl_coordinator_legacy.cpp",
                     "db/repl/repl_info.cpp",
-                    "db/repl/repl_set_health_poll_task.cpp",
-                    "db/repl/repl_set_impl.cpp",
                     "db/repl/replset_commands.cpp",
                     "db/repl/resync.cpp",
-                    "db/repl/rs.cpp",
-                    "db/repl/rs_config.cpp",
                     "db/repl/rs_initialsync.cpp",
                     "db/repl/rs_rollback.cpp",
                     "db/repl/rs_sync.cpp",
-                    "db/repl/state_box.cpp",
+                    "db/repl/scoped_conn.cpp",
                     "db/repl/sync.cpp",
                     "db/repl/sync_source_feedback.cpp",
                     "db/repl/sync_tail.cpp",
-                    "db/repl/write_concern.cpp",
                     "db/startup_warnings_mongod.cpp",
                     "db/stats/lock_server_status_section.cpp",
                     "db/stats/range_deleter_server_status.cpp",
@@ -955,6 +942,7 @@ serveronlyLibdeps = ["coreshard",
                      'db/storage/in_memory/storage_in_memory',
                      'db/storage/mmap_v1/storage_mmapv1',
                      'db/storage/kv_heap/storage_kv_heap',
+                     'db/storage/storage_engine_metadata',
                      'mmap',
                      'elapsed_tracker',
                      '$BUILD_DIR/third_party/shim_snappy']
@@ -997,14 +985,12 @@ env.Library("mongodandmongos", mongodAndMongosFiles,
 env.Library("mongodwebserver",
             [
              "db/clientlistplugin.cpp",
-             "db/repl/replset_web_handler.cpp",
              "db/restapi.cpp",
              "db/stats/snapshots_webplugins.cpp",
              ],
             LIBDEPS=["coredb", "mongodandmongos"])
 
-mongodOnlyFiles = [ "db/db.cpp", "db/commands/touch.cpp", "db/mongod_options_init.cpp",
-                    "db/repl/replication_initializer_${MONGO_REPL_IMPL}.cpp", ]
+mongodOnlyFiles = [ "db/db.cpp", "db/commands/touch.cpp", "db/mongod_options_init.cpp" ]
 
 # ----- TARGETS ------
 
@@ -1104,7 +1090,8 @@ env.Library('mocklib', [
         'dbtests/mock/mock_remote_db_server.cpp',
         'dbtests/mock/mock_replica_set.cpp'
     ],
-    LIBDEPS=['clientdriver'])
+    LIBDEPS=['clientdriver',
+             '$BUILD_DIR/mongo/db/repl/replica_set_messages'])
 
 test = env.Install(
     '#/',

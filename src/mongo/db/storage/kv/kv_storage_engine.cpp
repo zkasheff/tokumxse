@@ -68,32 +68,7 @@ namespace mongo {
 
     KVStorageEngine::KVStorageEngine( KVEngine* engine )
         : _engine( engine )
-        , _initialized( false )
         , _supportsDocLocking(_engine->supportsDocLocking()) {
-    }
-
-    void KVStorageEngine::cleanShutdown(OperationContext* txn) {
-        BSONObjBuilder closeResult;
-        dbHolder().closeAll(txn, closeResult, true);
-
-        for ( DBMap::const_iterator it = _dbs.begin(); it != _dbs.end(); ++it ) {
-            delete it->second;
-        }
-        _dbs.clear();
-
-        _catalog.reset( NULL );
-        _catalogRecordStore.reset( NULL );
-
-        _engine->cleanShutdown(txn);
-        // intentionally not deleting _engine
-    }
-
-    KVStorageEngine::~KVStorageEngine() {
-    }
-
-    void KVStorageEngine::finishInit() {
-        if ( _initialized )
-            return;
 
         OperationContextNoop opCtx( _engine->newRecoveryUnit() );
         {
@@ -170,11 +145,31 @@ namespace mongo {
             }
         }
 
-        _initialized = true;
+    }
+
+    void KVStorageEngine::cleanShutdown(OperationContext* txn) {
+        BSONObjBuilder closeResult;
+        dbHolder().closeAll(txn, closeResult, true);
+
+        for ( DBMap::const_iterator it = _dbs.begin(); it != _dbs.end(); ++it ) {
+            delete it->second;
+        }
+        _dbs.clear();
+
+        _catalog.reset( NULL );
+        _catalogRecordStore.reset( NULL );
+
+        _engine->cleanShutdown(txn);
+        // intentionally not deleting _engine
+    }
+
+    KVStorageEngine::~KVStorageEngine() {
+    }
+
+    void KVStorageEngine::finishInit() {
     }
 
     RecoveryUnit* KVStorageEngine::newRecoveryUnit( OperationContext* opCtx ) {
-        invariant( _initialized );
         if ( !_engine ) {
             // shutdown
             return NULL;
@@ -183,7 +178,6 @@ namespace mongo {
     }
 
     void KVStorageEngine::listDatabases( std::vector<std::string>* out ) const {
-        invariant( _initialized );
         boost::mutex::scoped_lock lk( _dbsLock );
         for ( DBMap::const_iterator it = _dbs.begin(); it != _dbs.end(); ++it ) {
             if ( it->second->isEmpty() )
@@ -194,7 +188,6 @@ namespace mongo {
 
     DatabaseCatalogEntry* KVStorageEngine::getDatabaseCatalogEntry( OperationContext* opCtx,
                                                                     const StringData& dbName ) {
-        invariant( _initialized );
         boost::mutex::scoped_lock lk( _dbsLock );
         KVDatabaseCatalogEntry*& db = _dbs[dbName.toString()];
         if ( !db ) {
@@ -205,13 +198,11 @@ namespace mongo {
     }
 
     Status KVStorageEngine::closeDatabase( OperationContext* txn, const StringData& db ) {
-        invariant( _initialized );
         // This is ok to be a no-op as there is no database layer in kv.
         return Status::OK();
     }
 
     Status KVStorageEngine::dropDatabase( OperationContext* txn, const StringData& db ) {
-        invariant( _initialized );
 
         KVDatabaseCatalogEntry* entry;
         {

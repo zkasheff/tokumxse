@@ -141,13 +141,13 @@ namespace mongo {
 
     bool OplogStart::isEOF() { return _done; }
 
-    void OplogStart::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void OplogStart::invalidate(OperationContext* txn, const DiskLoc& dl, InvalidationType type) {
         if (_needInit) { return; }
 
         if (INVALIDATION_DELETION != type) { return; }
 
         if (_cs) {
-            _cs->invalidate(dl, type);
+            _cs->invalidate(txn, dl, type);
         }
 
         for (size_t i = 0; i < _subIterators.size(); i++) {
@@ -156,6 +156,7 @@ namespace mongo {
     }
 
     void OplogStart::saveState() {
+        _txn = NULL;
         if (_cs) {
             _cs->saveState();
         }
@@ -166,6 +167,7 @@ namespace mongo {
     }
 
     void OplogStart::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
         if (_cs) {
             _cs->restoreState(opCtx);

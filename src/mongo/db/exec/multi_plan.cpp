@@ -407,12 +407,14 @@ namespace mongo {
     }
 
     void MultiPlanStage::saveState() {
+        _txn = NULL;
         for (size_t i = 0; i < _candidates.size(); ++i) {
             _candidates[i].root->saveState();
         }
     }
 
     void MultiPlanStage::restoreState(OperationContext* opCtx) {
+        invariant(_txn == NULL);
         _txn = opCtx;
 
         for (size_t i = 0; i < _candidates.size(); ++i) {
@@ -445,23 +447,25 @@ namespace mongo {
         }
     }
 
-    void MultiPlanStage::invalidate(const DiskLoc& dl, InvalidationType type) {
+    void MultiPlanStage::invalidate(OperationContext* txn,
+                                    const DiskLoc& dl,
+                                    InvalidationType type) {
         if (_failure) { return; }
 
         if (bestPlanChosen()) {
             CandidatePlan& bestPlan = _candidates[_bestPlanIdx];
-            bestPlan.root->invalidate(dl, type);
-            invalidateHelper(_txn, bestPlan.ws, dl, &bestPlan.results, _collection);
+            bestPlan.root->invalidate(txn, dl, type);
+            invalidateHelper(txn, bestPlan.ws, dl, &bestPlan.results, _collection);
             if (hasBackupPlan()) {
                 CandidatePlan& backupPlan = _candidates[_backupPlanIdx];
-                backupPlan.root->invalidate(dl, type);
-                invalidateHelper(_txn, backupPlan.ws, dl, &backupPlan.results, _collection);
+                backupPlan.root->invalidate(txn, dl, type);
+                invalidateHelper(txn, backupPlan.ws, dl, &backupPlan.results, _collection);
             }
         }
         else {
             for (size_t ix = 0; ix < _candidates.size(); ++ix) {
-                _candidates[ix].root->invalidate(dl, type);
-                invalidateHelper(_txn, _candidates[ix].ws, dl, &_candidates[ix].results, _collection);
+                _candidates[ix].root->invalidate(txn, dl, type);
+                invalidateHelper(txn, _candidates[ix].ws, dl, &_candidates[ix].results, _collection);
             }
         }
     }
