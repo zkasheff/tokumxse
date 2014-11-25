@@ -48,12 +48,18 @@ namespace mongo {
         }
     }
 
+    KVHeapDictionary::Cursor::Cursor(const SliceMap &map, const SliceCmp &cmp, const Slice &key, const int direction) :
+        _map(map), _cmp(cmp), _direction(direction) {
+        invariant(direction == 1 || direction == -1);
+        seek(NULL, key);
+    }
+
     KVHeapDictionary::Cursor::Cursor(const SliceMap &map, const SliceCmp &cmp, const int direction) :
         _map(map), _cmp(cmp), _direction(direction) {
         invariant(direction == 1 || direction == -1);
         if (_forward()) {
             _it = _map.begin();
-        } else{
+        } else {
             _rit = _map.rbegin();
         }
     }
@@ -178,7 +184,11 @@ namespace mongo {
                        << name );
     }
 
-    KVDictionary::Cursor *KVHeapDictionary::getCursor(OperationContext *opCtx, const int direction ) const {
+    KVDictionary::Cursor *KVHeapDictionary::getCursor(OperationContext *opCtx, const Slice &key, const int direction) const {
+        return new Cursor(_map, _cmp, key, direction);
+    }
+
+    KVDictionary::Cursor *KVHeapDictionary::getCursor(OperationContext *opCtx, const int direction) const {
         return new Cursor(_map, _cmp, direction);
     }
 

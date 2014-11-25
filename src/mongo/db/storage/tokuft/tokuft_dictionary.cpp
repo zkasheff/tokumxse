@@ -143,6 +143,17 @@ namespace mongo {
         return error2status(r);
     }
 
+    KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const Slice &key, const int direction) const {
+        try {
+            return new Cursor(*this, opCtx, key, direction);
+        } catch (ftcxx::ft_exception &e) {
+            // Will throw WriteConflictException if needed, discard status
+            ft_exception2status(e);
+            // otherwise rethrow
+            throw;
+        }
+    }
+
     KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const int direction) const {
         try {
             return new Cursor(*this, opCtx, direction);
@@ -186,19 +197,17 @@ namespace mongo {
         return Status::OK();
     }
 
-    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
-        : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
+    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction)
+        : _cur(dict.db().buffered_cursor(_getDBTxn(txn), slice2ftslice(key),
                                          dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);
     }
 
-    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction)
+    TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
-                                         ftcxx::Slice(leftKey.data(), leftKey.size()), ftcxx::Slice(rightKey.data(), rightKey.size()),
-                                         dict.comparator(), ftcxx::DB::NullFilter(),
-                                         0, (direction == 1), false, true)),
+                                         dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);

@@ -87,11 +87,9 @@ namespace mongo {
 
         class Cursor : public KVDictionary::Cursor {
         public:
-            // Full scan
-            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction = 1);
+            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction = 1);
 
-            // Range scan
-            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &leftKey, const Slice &rightKey, const int direction = 1);
+            Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction = 1);
 
             virtual bool ok() const;
 
@@ -104,7 +102,8 @@ namespace mongo {
             virtual Slice currVal() const;
 
         private:
-            ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> _cur;
+            typedef ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> FTCursor;
+            FTCursor _cur;
             Slice _currKey;
             Slice _currVal;
             bool _ok;
@@ -122,6 +121,8 @@ namespace mongo {
         virtual Status update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message);
 
         virtual Status remove(OperationContext *opCtx, const Slice &key);
+
+        virtual KVDictionary::Cursor *getCursor(OperationContext *opCtx, const Slice &key, const int direction = 1) const;
 
         virtual KVDictionary::Cursor *getCursor(OperationContext *opCtx, const int direction = 1) const;
 

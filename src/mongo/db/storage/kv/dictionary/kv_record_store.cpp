@@ -439,13 +439,12 @@ namespace mongo {
 
         invariant(loc.isValid() && !loc.isNull());
         const RecordIdKey key(loc);
-        _cursor.reset(_db->getCursor(_txn, _dir));
-        _cursor->seek(_txn, key.key());
+        _cursor.reset(_db->getCursor(_txn, key.key(), _dir));
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
-                                       const DiskLoc &start,
-                                       const CollectionScanParams::Direction &dir) :
+                                                      const DiskLoc &start,
+                                                      const CollectionScanParams::Direction &dir) :
         _db(db), _dir(dir), _savedLoc(DiskLoc()), _savedVal(Slice()), _txn(txn), _cursor() {
         if (start.isNull()) {
             // A null diskloc means the beginning for a forward cursor,

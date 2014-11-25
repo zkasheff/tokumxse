@@ -205,13 +205,24 @@ namespace mongo {
         const int _dir;
         OperationContext *_txn;
 
-        boost::scoped_ptr<KVDictionary::Cursor> _cursor;
+        mutable boost::scoped_ptr<KVDictionary::Cursor> _cursor;
         BSONObj _savedKey;
         DiskLoc _savedLoc;
+        mutable bool _initialized;
+
+        void _initialize() const {
+            if (_initialized) {
+                return;
+            }
+            _initialized = true;
+            if (_cursor) {
+                return;
+            }
+            _cursor.reset(_db->getCursor(_txn, _dir));
+        }
 
         bool _locate(const BSONObj &key, const DiskLoc &loc) {
-            _cursor.reset(_db->getCursor(_txn, _dir));
-            _cursor->seek(_txn, makeString(key, loc, false));
+            _cursor.reset(_db->getCursor(_txn, makeString(key, loc, false), _dir));
             return !isEOF() && loc == getDiskLoc() && key == getKey();
         }
 
@@ -220,11 +231,11 @@ namespace mongo {
             : _db(db),
               _dir(direction),
               _txn(txn),
-              _cursor(db->getCursor(txn, _dir)),
+              _cursor(),
               _savedKey(),
-              _savedLoc() {
-            invariant(_cursor);
-        }
+              _savedLoc(),
+              _initialized(false)
+        {}
 
         virtual ~KVSortedDataInterfaceCursor() {}
 
@@ -233,6 +244,7 @@ namespace mongo {
         }
 
         bool isEOF() const {
+            _initialize();
             return !_cursor || !_cursor->ok();
         }
 
@@ -273,6 +285,7 @@ namespace mongo {
         }
 
         BSONObj getKey() const {
+            _initialize();
             if (isEOF()) {
                 return BSONObj();
             }
@@ -281,6 +294,7 @@ namespace mongo {
         }
 
         DiskLoc getDiskLoc() const {
+            _initialize();
             if (isEOF()) {
                 return DiskLoc();
             }
@@ -289,12 +303,14 @@ namespace mongo {
         }
 
         void advance() {
+            _initialize();
             if (!isEOF()) {
                 _cursor->advance(_txn);
             }
         }
 
         void savePosition() {
+            _initialize();
             _savedKey = getKey().getOwned();
             _savedLoc = getDiskLoc();
             _cursor.reset();
@@ -304,6 +320,7 @@ namespace mongo {
         void restorePosition(OperationContext* txn) {
             invariant(!_txn && !_cursor);
             _txn = txn;
+            _initialized = true;
             if (!_savedKey.isEmpty() && !_savedLoc.isNull()) {
                 _locate(_savedKey, _savedLoc);
             } else {

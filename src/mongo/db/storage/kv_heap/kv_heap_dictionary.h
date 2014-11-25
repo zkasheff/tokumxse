@@ -77,6 +77,8 @@ namespace mongo {
             bool _forward() const { return _direction > 0; }
 
         public:
+            Cursor(const SliceMap &map, const SliceCmp &cmp, const Slice &key, const int direction);
+
             Cursor(const SliceMap &map, const SliceCmp &cmp, const int direction);
 
             bool ok() const;
@@ -122,6 +124,8 @@ namespace mongo {
         virtual Status compact(OperationContext *opCtx) {
             return Status::OK();
         }
+
+        KVDictionary::Cursor *getCursor(OperationContext *opCtx, const Slice &key, const int direction = 1) const;
 
         KVDictionary::Cursor *getCursor(OperationContext *opCtx, const int direction = 1) const;
     };
