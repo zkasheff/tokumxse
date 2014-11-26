@@ -174,6 +174,8 @@ namespace mongo {
 
         bool cappedMaxSize() const { invariant(false); }
 
+        void undoUpdateStats(long long nrDelta, long long dsDelta);
+
     protected:
         class KVRecordIterator : public RecordIterator {
             KVDictionary *_db;
@@ -210,7 +212,7 @@ namespace mongo {
             RecordData dataFor(const DiskLoc& loc) const;
         };
 
-        void _updateStats(long long nrDelta, long long dsDelta);
+        void _updateStats(OperationContext *txn, long long nrDelta, long long dsDelta);
 
         // Internal version of dataFor that takes a KVDictionary - used by
         // the RecordIterator to implement dataFor.

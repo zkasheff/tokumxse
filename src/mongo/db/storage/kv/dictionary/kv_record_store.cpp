@@ -187,10 +187,35 @@ namespace mongo {
         return _db->getStats().storageSize;
     }
 
-    void KVRecordStore::_updateStats(long long nrDelta, long long dsDelta) {
+    class RollbackSizeChange : public RecoveryUnit::Change {
+        KVRecordStore *_rs;
+        long long _nrDelta;
+        long long _dsDelta;
+    public:
+        RollbackSizeChange(KVRecordStore *rs, long long nrDelta, long long dsDelta)
+            : _rs(rs),
+              _nrDelta(nrDelta),
+              _dsDelta(dsDelta)
+        {}
+
+        void commit() {}
+
+        void rollback() {
+            _rs->undoUpdateStats(_nrDelta, _dsDelta);
+        }
+    };
+
+    void KVRecordStore::undoUpdateStats(long long nrDelta, long long dsDelta) {
+        invariant(_sizeStorer);
+        _numRecords.subtractAndFetch(nrDelta);
+        _dataSize.subtractAndFetch(dsDelta);
+    }
+
+    void KVRecordStore::_updateStats(OperationContext *txn, long long nrDelta, long long dsDelta) {
         if (_sizeStorer) {
             _numRecords.addAndFetch(nrDelta);
             _dataSize.addAndFetch(dsDelta);
+            txn->recoveryUnit()->registerChange(new RollbackSizeChange(this, nrDelta, dsDelta));
         }
     }
 
@@ -237,7 +262,7 @@ namespace mongo {
         Status s = _db->get(txn, key.key(), val);
         invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << s.toString());
 
-        _updateStats(-1, -val.size());
+        _updateStats(txn, -1, -val.size());
 
         s = _db->remove( txn, key.key() );
         invariant(s.isOK());
@@ -263,7 +288,7 @@ namespace mongo {
             return StatusWith<DiskLoc>(status);
         }
 
-        _updateStats(1, value.size());
+        _updateStats(txn, 1, value.size());
 
         return StatusWith<DiskLoc>(loc);
     }
@@ -304,7 +329,7 @@ namespace mongo {
             return StatusWith<DiskLoc>(status);
         }
 
-        _updateStats(numRecordsDelta, dataSizeDelta);
+        _updateStats(txn, numRecordsDelta, dataSizeDelta);
 
         return StatusWith<DiskLoc>(loc);
     }
