@@ -32,7 +32,7 @@ from buildscripts import moduleconfig
 
 import libdeps
 
-EnsureSConsVersion( 1, 1, 0 )
+EnsureSConsVersion( 2, 3, 0 )
 
 def findSettingsSetup():
     sys.path.append( "." )
@@ -1728,7 +1728,7 @@ def doConfigure(myenv):
             print("Using the leak sanitizer requires a valid symbolizer")
             Exit(1)
 
-    if using_msvc():
+    if using_msvc() and optBuild:
         # http://blogs.msdn.com/b/vcblog/archive/2013/09/11/introducing-gw-compiler-switch.aspx
         #
         myenv.Append( CCFLAGS=["/Gw", "/Gy"] )

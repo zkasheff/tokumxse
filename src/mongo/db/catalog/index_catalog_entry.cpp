@@ -39,6 +39,7 @@
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/index/index_descriptor.h"
+#include "mongo/db/global_environment_experiment.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/util/file_allocator.h"
 #include "mongo/util/log.h"
@@ -51,11 +52,11 @@ namespace mongo {
         HeadManagerImpl(IndexCatalogEntry* ice) : _catalogEntry(ice) { }
         virtual ~HeadManagerImpl() { }
 
-        const DiskLoc getHead(OperationContext* txn) const {
+        const RecordId getHead(OperationContext* txn) const {
             return _catalogEntry->head(txn);
         }
 
-        void setHead(OperationContext* txn, const DiskLoc newHead) {
+        void setHead(OperationContext* txn, const RecordId newHead) {
             _catalogEntry->setHead(txn, newHead);
         }
 
@@ -75,8 +76,8 @@ namespace mongo {
           _accessMethod( NULL ),
           _headManager(new HeadManagerImpl(this)),
           _ordering( Ordering::make( descriptor->keyPattern() ) ),
-          _isReady( false ),
-          _wantToSetIsMultikey( false ) {
+          _isReady( false ) {
+
         _descriptor->_cachedEntry = this;
     }
 
@@ -98,7 +99,7 @@ namespace mongo {
         _isMultikey = _catalogIsMultikey( txn );
     }
 
-    const DiskLoc& IndexCatalogEntry::head( OperationContext* txn ) const {
+    const RecordId& IndexCatalogEntry::head( OperationContext* txn ) const {
         DEV invariant( _head == _catalogHead( txn ) );
         return _head;
     }
@@ -108,8 +109,7 @@ namespace mongo {
         return _isReady;
     }
 
-    bool IndexCatalogEntry::isMultikey( OperationContext* txn ) const {
-        DEV invariant( _isMultikey == _catalogIsMultikey( txn ) );
+    bool IndexCatalogEntry::isMultikey() const {
         return _isMultikey;
     }
 
@@ -121,17 +121,17 @@ namespace mongo {
 
     class IndexCatalogEntry::SetHeadChange : public RecoveryUnit::Change {
     public:
-        SetHeadChange(IndexCatalogEntry* ice, DiskLoc oldHead) :_ice(ice), _oldHead(oldHead) {
+        SetHeadChange(IndexCatalogEntry* ice, RecordId oldHead) :_ice(ice), _oldHead(oldHead) {
         }
 
         virtual void commit() {}
         virtual void rollback() { _ice->_head = _oldHead; }
 
         IndexCatalogEntry* _ice;
-        const DiskLoc _oldHead;
+        const RecordId _oldHead;
     };
 
-    void IndexCatalogEntry::setHead( OperationContext* txn, DiskLoc newHead ) {
+    void IndexCatalogEntry::setHead( OperationContext* txn, RecordId newHead ) {
         _collection->setIndexHead( txn,
                                    _descriptor->indexName(),
                                    newHead );
@@ -140,49 +140,64 @@ namespace mongo {
         _head = newHead;
     }
 
-    class IndexCatalogEntry::SetMultikeyChange : public RecoveryUnit::Change {
+
+    class RecoveryUnitSwap {
     public:
-        SetMultikeyChange(IndexCatalogEntry* ice) :_ice(ice) {
-            invariant(!_ice->_isMultikey);
+        RecoveryUnitSwap(OperationContext* txn, RecoveryUnit* newRecoveryUnit)
+            : _txn(txn),
+              _oldRecoveryUnit(_txn->releaseRecoveryUnit()) {
+
+            _txn->setRecoveryUnit(newRecoveryUnit);
         }
 
-        virtual void commit() {}
-        virtual void rollback() { _ice->_isMultikey = false; }
+        ~RecoveryUnitSwap() {
+            _txn->releaseRecoveryUnit();
+            _txn->setRecoveryUnit(_oldRecoveryUnit);
+        }
 
-        IndexCatalogEntry* _ice;
+    private:
+        // Neither of these are owned
+        OperationContext* const _txn;
+        RecoveryUnit* const _oldRecoveryUnit;
     };
 
-    void IndexCatalogEntry::setMultikey( OperationContext* txn ) {
-        if ( isMultikey( txn ) )
-            return;
-
-        if ( !_isReady && txn->lockState() &&
-             !txn->lockState()->isCollectionLockedForMode( _ns, MODE_X ) ) {
-            // We don't have an exclusive lock, so can't set is multi key.
-            // But, we're building it in an IX lock, so we keep track and will set it later
-            _wantToSetIsMultikey = true;
+    void IndexCatalogEntry::setMultikey(OperationContext* txn) {
+        if (isMultikey()) {
             return;
         }
 
-        const ResourceId collRes = ResourceId(RESOURCE_COLLECTION, _ns);
-        LockResult res = txn->lockState()->lock(collRes, MODE_X, UINT_MAX, true);
-        if (res == LOCK_DEADLOCK) throw WriteConflictException();
-        invariant(res == LOCK_OK);
+        // Only one thread should set the multi-key value per collection, because the metadata for
+        // a collection is one large document.
+        Lock::ResourceLock collMDLock(txn->lockState(),
+                                      ResourceId(RESOURCE_METADATA, _ns),
+                                      MODE_X);
 
-        // Lock will be held until end of WUOW to ensure rollback safety.
-        ON_BLOCK_EXIT(&Locker::unlock, txn->lockState(), collRes);
+        // Check again in case we blocked on the MD lock and another thread beat us to setting the
+        // multiKey metadata for this index.
+        if (isMultikey()) {
+            return;
+        }
 
-        if ( _collection->setIndexIsMultikey( txn,
-                                              _descriptor->indexName(),
-                                              true ) ) {
-            if ( _infoCache ) {
-                LOG(1) << _ns << ": clearing plan cache - index "
-                       << _descriptor->keyPattern() << " set to multi key.";
-                _infoCache->clearQueryCache();
+        // This effectively emulates a sub-transaction off the main transaction, which invoked
+        // setMultikey. The reason we need is to avoid artificial WriteConflicts, which happen
+        // with snapshot isolation.
+        {
+            StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
+            RecoveryUnitSwap ruSwap(txn, storageEngine->newRecoveryUnit(txn));
+
+            WriteUnitOfWork wuow(txn);
+
+            if (_collection->setIndexIsMultikey(txn, _descriptor->indexName())) {
+                if (_infoCache) {
+                    LOG(1) << _ns << ": clearing plan cache - index "
+                           << _descriptor->keyPattern() << " set to multi key.";
+                    _infoCache->clearQueryCache();
+                }
             }
+
+            wuow.commit();
         }
 
-        txn->recoveryUnit()->registerChange(new SetMultikeyChange(this));
         _isMultikey = true;
     }
 
@@ -192,7 +207,7 @@ namespace mongo {
         return _collection->isIndexReady( txn, _descriptor->indexName() );
     }
 
-    DiskLoc IndexCatalogEntry::_catalogHead( OperationContext* txn ) const {
+    RecordId IndexCatalogEntry::_catalogHead( OperationContext* txn ) const {
         return _collection->getIndexHead( txn, _descriptor->indexName() );
     }
 

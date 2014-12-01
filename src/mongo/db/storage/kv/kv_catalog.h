@@ -38,7 +38,7 @@
 
 #include "mongo/base/string_data.h"
 #include "mongo/db/catalog/collection_options.h"
-#include "mongo/db/diskloc.h"
+#include "mongo/db/record_id.h"
 #include "mongo/db/storage/bson_collection_catalog_entry.h"
 
 namespace mongo {
@@ -95,7 +95,7 @@ namespace mongo {
 
         BSONObj _findEntry( OperationContext* opCtx,
                             const StringData& ns,
-                            DiskLoc* out=NULL ) const;
+                            RecordId* out=NULL ) const;
 
         std::string _newUniqueIdent(const char* kind);
 
@@ -112,10 +112,10 @@ namespace mongo {
 
         struct Entry {
             Entry(){}
-            Entry( std::string i, DiskLoc l )
+            Entry( std::string i, RecordId l )
                 : ident(i), storedLoc( l ) {}
             std::string ident;
-            DiskLoc storedLoc;
+            RecordId storedLoc;
         };
         typedef std::map<std::string,Entry> NSToIdentMap;
         NSToIdentMap _idents;

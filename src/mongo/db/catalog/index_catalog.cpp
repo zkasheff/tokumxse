@@ -497,10 +497,6 @@ namespace {
         IndexCatalogEntry* entry = _catalog->_entries.find( desc );
         fassert( 17331, entry && entry == _entry );
 
-        if ( entry->wantToSetIsMultikey() ) {
-            entry->setMultikey(_txn);
-        }
-
         entry->setIsReady( true );
     }
 
@@ -862,7 +858,7 @@ namespace {
     bool IndexCatalog::isMultikey( OperationContext* txn, const IndexDescriptor* idx ) {
         IndexCatalogEntry* entry = _entries.find( idx );
         invariant( entry );
-        return entry->isMultikey( txn );
+        return entry->isMultikey();
     }
 
 
@@ -1034,7 +1030,7 @@ namespace {
     Status IndexCatalog::_indexRecord(OperationContext* txn,
                                       IndexCatalogEntry* index,
                                       const BSONObj& obj,
-                                      const DiskLoc &loc ) {
+                                      const RecordId &loc ) {
         InsertDeleteOptions options;
         options.logIfError = false;
         options.dupsAllowed = isDupsAllowed( index->descriptor() );
@@ -1046,7 +1042,7 @@ namespace {
     Status IndexCatalog::_unindexRecord(OperationContext* txn,
                                         IndexCatalogEntry* index,
                                         const BSONObj& obj,
-                                        const DiskLoc &loc,
+                                        const RecordId &loc,
                                         bool logIfError) {
         InsertDeleteOptions options;
         options.logIfError = logIfError;
@@ -1067,7 +1063,7 @@ namespace {
 
     Status IndexCatalog::indexRecord(OperationContext* txn,
                                    const BSONObj& obj,
-                                   const DiskLoc &loc ) {
+                                   const RecordId &loc ) {
 
         for ( IndexCatalogEntryContainer::const_iterator i = _entries.begin();
               i != _entries.end();
@@ -1082,7 +1078,7 @@ namespace {
 
     void IndexCatalog::unindexRecord(OperationContext* txn,
                                      const BSONObj& obj,
-                                     const DiskLoc& loc,
+                                     const RecordId& loc,
                                      bool noWarn) {
 
         for ( IndexCatalogEntryContainer::const_iterator i = _entries.begin();

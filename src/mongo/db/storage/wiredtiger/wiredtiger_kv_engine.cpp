@@ -36,6 +36,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/operations.hpp>
 
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_index.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_record_store.h"
@@ -329,7 +330,7 @@ namespace mongo {
             {
                 boost::mutex::scoped_lock lk( _identToDropMutex );
                 _identToDrop.insert( uri );
-                _epoch++;
+                _epoch.fetchAndAdd(1);
             }
             _sessionCache->closeAll();
             return false;
@@ -339,11 +340,14 @@ namespace mongo {
         return false;
     }
 
-    bool WiredTigerKVEngine::haveDropsQueued() const {
+    void WiredTigerKVEngine::syncSizeInfoOccasionally() const {
         if ( _sizeStorerSyncTracker.intervalHasElapsed() ) {
             _sizeStorerSyncTracker.resetLastTime();
             syncSizeInfo(false);
         }
+    }
+
+    bool WiredTigerKVEngine::haveDropsQueued() const {
         boost::mutex::scoped_lock lk( _identToDropMutex );
         return !_identToDrop.empty();
     }

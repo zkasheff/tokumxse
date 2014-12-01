@@ -37,8 +37,8 @@
 #include <boost/scoped_ptr.hpp>
 
 #include "mongo/base/owned_pointer_vector.h"
-#include "mongo/db/diskloc.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/record_id.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/util/timer.h"
 
@@ -85,8 +85,8 @@ namespace mongo {
         bool everStartedWrite() const { return _everStartedWrite; }
         int depth() const { return _depth; }
 
-        void setOplogReadTill( const DiskLoc& loc );
-        DiskLoc getOplogReadTill() const { return _oplogReadTill; }
+        void setOplogReadTill( const RecordId& loc );
+        RecordId getOplogReadTill() const { return _oplogReadTill; }
 
         static WiredTigerRecoveryUnit* get(OperationContext *txn);
 
@@ -107,7 +107,7 @@ namespace mongo {
         Timer _timer;
         bool _currentlySquirreled;
         bool _syncing;
-        DiskLoc _oplogReadTill;
+        RecordId _oplogReadTill;
 
         typedef OwnedPointerVector<Change> Changes;
         Changes _changes;

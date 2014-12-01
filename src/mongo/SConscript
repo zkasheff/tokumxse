@@ -625,6 +625,7 @@ serverOnlyFiles = [ "db/background.cpp",
                     "db/commands/validate.cpp",
                     "db/commands/write_commands/batch_executor.cpp",
                     "db/commands/write_commands/write_commands.cpp",
+                    "db/commands/writeback_compatibility_shim.cpp",
                     "db/curop.cpp",
                     "db/currentop_command.cpp",
                     "db/dbcommands.cpp",
@@ -721,8 +722,6 @@ env.Library("server_options", [
 
 env.CppUnitTest('server_options_test', 'db/server_options_test.cpp',
                 LIBDEPS=['server_options'])
-
-env.CppUnitTest('diskloc_test', 'db/diskloc_test.cpp', LIBDEPS=[])
 
 env.CppUnitTest('v8_deadline_monitor_test', 'scripting/v8_deadline_monitor_test.cpp', LIBDEPS=[])
 
