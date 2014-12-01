@@ -28,20 +28,33 @@
  *    it in the license file.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include "mongo/base/init.h"
 #include "mongo/db/global_environment_experiment.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 
     class TokuFTStorageEngine : public KVStorageEngine {
         MONGO_DISALLOW_COPYING(TokuFTStorageEngine);
+
+        bool _durable;
+
     public:
-        TokuFTStorageEngine(const std::string &path) :
-            KVStorageEngine(new TokuFTEngine(path)) {
+        TokuFTStorageEngine(const std::string &path, bool durable)
+            : KVStorageEngine(new TokuFTEngine(path)),
+              _durable(durable)
+        {
+            warning() << "TokuFT: Initializing with --nojournal.  Note that this will cause {j: true} writes to fail, but will not actually disable journaling." << std::endl;
+            warning() << "TokuFT: This is only for tests, there is no reason to run with --nojournal in production." << std::endl;
         }
+
+        // Even though the engine is always durable, we sometimes need to fake that we aren't for tests.  SERVER-15942
+        virtual bool isDurable() const { return _durable; }
 
         virtual ~TokuFTStorageEngine() { }
     };
@@ -50,7 +63,7 @@ namespace mongo {
     public:
         virtual ~TokuFTFactory() { }
         virtual StorageEngine *create(const StorageGlobalParams &params) const {
-            return new TokuFTStorageEngine(params.dbpath);
+            return new TokuFTStorageEngine(params.dbpath, params.dur);
         }
         virtual StringData getCanonicalName() const {
             return "tokuft";
