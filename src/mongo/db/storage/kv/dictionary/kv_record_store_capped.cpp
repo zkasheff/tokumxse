@@ -77,23 +77,23 @@ namespace mongo {
         // Delete documents while we are over-full and the iterator has more.
         for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
              needsDelete(txn) && !iter->isEOF(); ) {
-            const DiskLoc oldest = iter->getNext();
+            const RecordId oldest = iter->getNext();
             deleteRecord(txn, oldest);
         }
     }
 
-    StatusWith<DiskLoc> KVRecordStoreCapped::insertRecord( OperationContext* txn,
+    StatusWith<RecordId> KVRecordStoreCapped::insertRecord( OperationContext* txn,
                                                            const char* data,
                                                            int len,
                                                            bool enforceQuota ) {
         if (len > _cappedMaxSize) {
             // this single document won't fit
-            return StatusWith<DiskLoc>(ErrorCodes::BadValue,
+            return StatusWith<RecordId>(ErrorCodes::BadValue,
                                        "object to insert exceeds cappedMaxSize");
         }
 
         // insert using the regular KVRecordStore insert implementation..
-        const StatusWith<DiskLoc> status =
+        const StatusWith<RecordId> status =
             KVRecordStore::insertRecord(txn, data, len, enforceQuota);
 
         // ..then delete old data as needed
@@ -102,7 +102,7 @@ namespace mongo {
         return status;
     }
 
-    StatusWith<DiskLoc> KVRecordStoreCapped::insertRecord( OperationContext* txn,
+    StatusWith<RecordId> KVRecordStoreCapped::insertRecord( OperationContext* txn,
                                                            const DocWriter* doc,
                                                            bool enforceQuota ) {
         // We need to override every insertRecord overload, otherwise the compiler gets mad.
@@ -111,9 +111,9 @@ namespace mongo {
         return insertRecord(txn, value.data(), value.size(), enforceQuota);
     }
 
-    void KVRecordStoreCapped::deleteRecord( OperationContext* txn, const DiskLoc& dl ) {
+    void KVRecordStoreCapped::deleteRecord( OperationContext* txn, const RecordId& dl ) {
         if (_cappedDeleteCallback) {
-            // need to notify higher layers that a diskloc is about to be deleted
+            // need to notify higher layers that a RecordId is about to be deleted
             uassertStatusOK(_cappedDeleteCallback->aboutToDeleteCapped(txn, dl));
         }
         KVRecordStore::deleteRecord(txn, dl);
@@ -129,13 +129,13 @@ namespace mongo {
     }
 
     void KVRecordStoreCapped::temp_cappedTruncateAfter(OperationContext* txn,
-                                                       DiskLoc end,
+                                                       RecordId end,
                                                        bool inclusive) {
         // Not very efficient, but it should only be used by tests.
         for (boost::scoped_ptr<RecordIterator> iter(
                  getIterator(txn, end, CollectionScanParams::FORWARD));
              !iter->isEOF(); ) {
-            DiskLoc loc = iter->getNext();
+            RecordId loc = iter->getNext();
             if (!inclusive && loc == end) {
                 continue;
             }

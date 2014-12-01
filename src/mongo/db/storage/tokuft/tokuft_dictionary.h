@@ -51,7 +51,7 @@ namespace mongo {
     class BSONElement;
     class BSONObjBuilder;
     class CollectionOptions;
-    class DiskLoc;
+    class RecordId;
     class IndexDescriptor;
     class OperationContext;
 

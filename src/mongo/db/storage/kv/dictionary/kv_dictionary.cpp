@@ -28,11 +28,9 @@
  *    it in the license file.
  */
 
+#include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
-
-#include "mongo/db/diskloc.h"
-#include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/kv/slice.h"
 
 namespace mongo {
@@ -67,7 +65,7 @@ namespace mongo {
 
     IndexKeyEntry makeIndexKeyEntry(const Slice& slice) {
         const BSONObj key(slice.data());
-        const DiskLoc loc = *reinterpret_cast<const DiskLoc*>(slice.data() + key.objsize());
+        const RecordId loc = *reinterpret_cast<const RecordId*>(slice.data() + key.objsize());
         return IndexKeyEntry(key, loc);
     }
 

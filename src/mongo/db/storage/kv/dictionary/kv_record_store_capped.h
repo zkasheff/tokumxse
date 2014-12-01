@@ -51,16 +51,16 @@ namespace mongo {
 
         virtual ~KVRecordStoreCapped() { }
 
-        virtual StatusWith<DiskLoc> insertRecord( OperationContext* txn,
+        virtual StatusWith<RecordId> insertRecord( OperationContext* txn,
                                                   const char* data,
                                                   int len,
                                                   bool enforceQuota );
 
-        virtual StatusWith<DiskLoc> insertRecord( OperationContext* txn,
+        virtual StatusWith<RecordId> insertRecord( OperationContext* txn,
                                                   const DocWriter* doc,
                                                   bool enforceQuota );
 
-        virtual void deleteRecord( OperationContext* txn, const DiskLoc& dl );
+        virtual void deleteRecord( OperationContext* txn, const RecordId& dl );
 
         virtual void appendCustomStats( OperationContext* txn,
                                         BSONObjBuilder* result,
@@ -70,7 +70,7 @@ namespace mongo {
         virtual bool isCapped() const { return true; }
 
         virtual void temp_cappedTruncateAfter(OperationContext* txn,
-                                              DiskLoc end,
+                                              RecordId end,
                                               bool inclusive);
 
         virtual void setCappedDeleteCallback(CappedDocumentDeleteCallback* cb) {

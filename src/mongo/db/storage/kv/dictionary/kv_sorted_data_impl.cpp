@@ -63,13 +63,13 @@ namespace mongo {
          * strings, and false otherwise. Useful because field names are not necessary in an index
          * key, because the ordering of the fields is already known.
          */
-        Slice makeString( const BSONObj& key, const DiskLoc loc, bool removeFieldNames = true ) {
+        Slice makeString( const BSONObj& key, const RecordId loc, bool removeFieldNames = true ) {
             const BSONObj finalKey = removeFieldNames ? stripFieldNames( key ) : key;
 
             Slice s(finalKey.objsize() + sizeof loc);
 
             std::copy(finalKey.objdata(), finalKey.objdata() + finalKey.objsize(), s.mutableData());
-            DiskLoc *lp = reinterpret_cast<DiskLoc *>(s.mutableData() + finalKey.objsize());
+            RecordId *lp = reinterpret_cast<RecordId *>(s.mutableData() + finalKey.objsize());
             *lp = loc;
 
             return s;
@@ -77,11 +77,11 @@ namespace mongo {
 
         /**
          * Constructs an IndexKeyEntry from a slice containing the bytes of a BSONObject followed
-         * by the bytes of a DiskLoc
+         * by the bytes of a RecordId
          */
         IndexKeyEntry makeIndexKeyEntry( const Slice& slice ) {
             BSONObj key = BSONObj( slice.data() );
-            DiskLoc loc = *reinterpret_cast<const DiskLoc*>( slice.data() + key.objsize() );
+            RecordId loc = *reinterpret_cast<const RecordId*>( slice.data() + key.objsize() );
             return IndexKeyEntry( key, loc );
         }
 
@@ -105,7 +105,7 @@ namespace mongo {
         invariant( _db );
     }
 
-    Status KVSortedDataBuilderImpl::addKey(const BSONObj& key, const DiskLoc& loc) {
+    Status KVSortedDataBuilderImpl::addKey(const BSONObj& key, const RecordId& loc) {
         return _impl->insert(_txn, key, loc, _dupsAllowed);
     }
 
@@ -116,7 +116,7 @@ namespace mongo {
 
     Status KVSortedDataImpl::insert(OperationContext* txn,
                                     const BSONObj& key,
-                                    const DiskLoc& loc,
+                                    const RecordId& loc,
                                     bool dupsAllowed) {
         if (key.objsize() >= kTempKeyMaxSize) {
             const string msg = mongoutils::str::stream()
@@ -139,20 +139,20 @@ namespace mongo {
 
     void KVSortedDataImpl::unindex(OperationContext* txn,
                                    const BSONObj& key,
-                                   const DiskLoc& loc,
+                                   const RecordId& loc,
                                    bool dupsAllowed) {
         _db->remove(txn, makeString(key, loc));
     }
 
     Status KVSortedDataImpl::dupKeyCheck(OperationContext* txn,
                                          const BSONObj& key,
-                                         const DiskLoc& loc) {
+                                         const RecordId& loc) {
         boost::scoped_ptr<SortedDataInterface::Cursor> cursor(newCursor(txn, 1));
-        cursor->locate(key, DiskLoc());
+        cursor->locate(key, RecordId());
 
         if (cursor->isEOF() || cursor->getKey() != key) {
             return Status::OK();
-        } else if (cursor->getDiskLoc() == loc) {
+        } else if (cursor->getRecordId() == loc) {
             return Status::OK();
         } else {
             return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
@@ -207,7 +207,7 @@ namespace mongo {
 
         mutable boost::scoped_ptr<KVDictionary::Cursor> _cursor;
         BSONObj _savedKey;
-        DiskLoc _savedLoc;
+        RecordId _savedLoc;
         mutable bool _initialized;
 
         void _initialize() const {
@@ -221,9 +221,9 @@ namespace mongo {
             _cursor.reset(_db->getCursor(_txn, _dir));
         }
 
-        bool _locate(const BSONObj &key, const DiskLoc &loc) {
+        bool _locate(const BSONObj &key, const RecordId &loc) {
             _cursor.reset(_db->getCursor(_txn, makeString(key, loc, false), _dir));
-            return !isEOF() && loc == getDiskLoc() && key == getKey();
+            return !isEOF() && loc == getRecordId() && key == getKey();
         }
 
     public:
@@ -249,12 +249,12 @@ namespace mongo {
         }
 
         bool pointsToSamePlaceAs(const Cursor& other) const {
-            return getDiskLoc() == other.getDiskLoc() && getKey() == other.getKey();
+            return getRecordId() == other.getRecordId() && getKey() == other.getKey();
         }
 
-        void aboutToDeleteBucket(const DiskLoc& bucket) { }
+        void aboutToDeleteBucket(const RecordId& bucket) { }
 
-        bool locate(const BSONObj& key, const DiskLoc& loc) {
+        bool locate(const BSONObj& key, const RecordId& loc) {
             return _locate(stripFieldNames(key), loc);
         }
 
@@ -271,7 +271,7 @@ namespace mongo {
                                                                 keyEnd,
                                                                 keyEndInclusive,
                                                                 getDirection() );
-            _locate(key, _dir > 0 ? minDiskLoc : maxDiskLoc);
+            _locate(key, _dir > 0 ? RecordId::min() : RecordId::max());
         }
 
         void customLocate(const BSONObj& keyBegin,
@@ -293,10 +293,10 @@ namespace mongo {
             return entry.key;
         }
 
-        DiskLoc getDiskLoc() const {
+        RecordId getRecordId() const {
             _initialize();
             if (isEOF()) {
-                return DiskLoc();
+                return RecordId();
             }
             IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
             return entry.loc;
@@ -312,7 +312,7 @@ namespace mongo {
         void savePosition() {
             _initialize();
             _savedKey = getKey().getOwned();
-            _savedLoc = getDiskLoc();
+            _savedLoc = getRecordId();
             _cursor.reset();
             _txn = NULL;
         }

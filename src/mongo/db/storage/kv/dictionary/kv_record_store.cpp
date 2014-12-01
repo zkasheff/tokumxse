@@ -51,7 +51,7 @@ namespace mongo {
      * Class to abstract the in-memory vs on-disk format of a key in the
      * record dictionary.
      *
-     * In memory, a key is a valid DiskLoc for which loc.isValid() and
+     * In memory, a key is a valid RecordId for which loc.isValid() and
      * !loc.isNull() are true.
      *
      * On disk, a key is a pair of back-to-back integers whose individual
@@ -63,25 +63,25 @@ namespace mongo {
      * and fastest comparator.
      */
     class RecordIdKey {
-        DiskLoc _loc;
+        RecordId _loc;
         uint64_t _key;
 
-        // We assume that a diskloc can be represented in a 64 bit integer.
-        BOOST_STATIC_ASSERT(sizeof(DiskLoc) == sizeof(uint64_t));
+        // We assume that a RecordId can be represented in a 64 bit integer.
+        BOOST_STATIC_ASSERT(sizeof(RecordId) == sizeof(uint64_t));
 
     public:
         /**
-         * Used when we have a diskloc and we want a memcmp-ready Slice to
+         * Used when we have a RecordId and we want a memcmp-ready Slice to
          * be used as a stored key in the KVDictionary.
          *
          * Algorithm:
-         * - Take a diskloc with two integers laid out in native bye order
+         * - Take a RecordId with two integers laid out in native bye order
          *   [a, o]
          * - Construct a 64 bit integer whose high order bits are `a' and
          *   whose low order bits are `o'
          * - Convert that integer to big endian and store it in `_key'
          */
-        RecordIdKey(const DiskLoc &loc) :
+        RecordIdKey(const RecordId &loc) :
             _loc(loc),
             _key() {
             _key = endian::nativeToBig(uint64_t(loc.a()) << 32ULL |
@@ -90,13 +90,13 @@ namespace mongo {
 
         /**
          * Used when we have a big-endian key Slice from the KVDictionary
-         * and we want to get its diskloc representation.
+         * and we want to get its RecordId representation.
          *
          * Algorithm (work backwards from the above constructor's
          * algorithm):
          * - Interpret the stored key as a 64 bit integer into `_key',
          *   then convert `_key' to native byte order and store it in `k'.
-         * - Create a diskloc(a, o) where `a' is a 32 bit integer
+         * - Create a RecordId(a, o) where `a' is a 32 bit integer
          *   constructed from the high order bits of `_k' and where `o' is
          *   constructed from the low order bits.
          */
@@ -104,7 +104,7 @@ namespace mongo {
             _loc(),
             _key(key.as<uint64_t>()) {
             uint64_t k = endian::bigToNative(_key);
-            _loc = DiskLoc((k & 0xFFFFFFFF00000000) >> 32ULL,
+            _loc = RecordId((k & 0xFFFFFFFF00000000) >> 32ULL,
                             k & 0x00000000FFFFFFFF);
         }
 
@@ -117,9 +117,9 @@ namespace mongo {
         }
 
         /**
-         * Return the DiskLoc representation of a deserialized key Slice
+         * Return the RecordId representation of a deserialized key Slice
          */
-        DiskLoc loc() const {
+        RecordId loc() const {
             return _loc;
         }
     };
@@ -138,12 +138,12 @@ namespace mongo {
         invariant(_db != NULL);
 
         // Get the next id, which is one greater than the greatest stored.
-        boost::scoped_ptr<RecordIterator> iter(getIterator(opCtx, DiskLoc(), CollectionScanParams::BACKWARD));
+        boost::scoped_ptr<RecordIterator> iter(getIterator(opCtx, RecordId(), CollectionScanParams::BACKWARD));
         if (!iter->isEOF()) {
-            const DiskLoc lastLoc = iter->curr();
+            const RecordId lastLoc = iter->curr();
             _nextIdNum.store(lastLoc.getOfs() + (uint64_t(lastLoc.a()) << 32ULL) + 1);
         } else {
-            // Need to start at 1 so we are always higher than minDiskLoc
+            // Need to start at 1 so we are always higher than RecordId::min()
             _nextIdNum.store(1);
         }
 
@@ -219,7 +219,7 @@ namespace mongo {
         }
     }
 
-    RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const DiskLoc& loc) {
+    RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& loc) {
         const RecordIdKey key(loc);
 
         Slice value;
@@ -237,7 +237,7 @@ namespace mongo {
         return RecordData(value.ownedBuf().moveFrom(), value.size());
     }
 
-    RecordData KVRecordStore::dataFor( OperationContext* txn, const DiskLoc& loc) const {
+    RecordData KVRecordStore::dataFor( OperationContext* txn, const RecordId& loc) const {
         RecordData rd;
         bool found = findRecord(txn, loc, &rd);
         // This method is called when we know there must be an associated record for `loc'
@@ -246,7 +246,7 @@ namespace mongo {
     }
 
     bool KVRecordStore::findRecord( OperationContext* txn,
-                                    const DiskLoc& loc, RecordData* out ) const {
+                                    const RecordId& loc, RecordData* out ) const {
         RecordData rd = _getDataFor(_db.get(), txn, loc);
         if (rd.data() == NULL) {
             return false;
@@ -255,7 +255,7 @@ namespace mongo {
         return true;
     }
 
-    void KVRecordStore::deleteRecord( OperationContext* txn, const DiskLoc& loc ) {
+    void KVRecordStore::deleteRecord( OperationContext* txn, const RecordId& loc ) {
         const RecordIdKey key(loc);
 
         Slice val;
@@ -268,11 +268,11 @@ namespace mongo {
         invariant(s.isOK());
     }
 
-    StatusWith<DiskLoc> KVRecordStore::insertRecord( OperationContext* txn,
+    StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
                                                      const char* data,
                                                      int len,
                                                      bool enforceQuota ) {
-        const DiskLoc loc = _nextId();
+        const RecordId loc = _nextId();
         const RecordIdKey key(loc);
         const Slice value(data, len);
 
@@ -285,15 +285,15 @@ namespace mongo {
 
         const Status status = _db->insert(txn, key.key(), value);
         if (!status.isOK()) {
-            return StatusWith<DiskLoc>(status);
+            return StatusWith<RecordId>(status);
         }
 
         _updateStats(txn, 1, value.size());
 
-        return StatusWith<DiskLoc>(loc);
+        return StatusWith<RecordId>(loc);
     }
 
-    StatusWith<DiskLoc> KVRecordStore::insertRecord( OperationContext* txn,
+    StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
                                                      const DocWriter* doc,
                                                      bool enforceQuota ) {
         Slice value(doc->documentSize());
@@ -301,8 +301,8 @@ namespace mongo {
         return insertRecord(txn, value.data(), value.size(), enforceQuota);
     }
 
-    StatusWith<DiskLoc> KVRecordStore::updateRecord( OperationContext* txn,
-                                                     const DiskLoc& loc,
+    StatusWith<RecordId> KVRecordStore::updateRecord( OperationContext* txn,
+                                                     const RecordId& loc,
                                                      const char* data,
                                                      int len,
                                                      bool enforceQuota,
@@ -320,22 +320,22 @@ namespace mongo {
         } else if (status.isOK()) {
             dataSizeDelta -= val.size();
         } else {
-            return StatusWith<DiskLoc>(status);
+            return StatusWith<RecordId>(status);
         }
 
         // An update with a complete new image (data, len) is implemented as an overwrite insert.
         status = _db->insert(txn, key.key(), value);
         if (!status.isOK()) {
-            return StatusWith<DiskLoc>(status);
+            return StatusWith<RecordId>(status);
         }
 
         _updateStats(txn, numRecordsDelta, dataSizeDelta);
 
-        return StatusWith<DiskLoc>(loc);
+        return StatusWith<RecordId>(loc);
     }
 
     Status KVRecordStore::updateWithDamages( OperationContext* txn,
-                                             const DiskLoc& loc,
+                                             const RecordId& loc,
                                              const RecordData& oldRec,
                                              const char* damageSource,
                                              const mutablebson::DamageVector& damages ) {
@@ -351,7 +351,7 @@ namespace mongo {
     }
 
     RecordIterator* KVRecordStore::getIterator( OperationContext* txn,
-                                                const DiskLoc& start,
+                                                const RecordId& start,
                                                 const CollectionScanParams::Direction& dir
                                               ) const {
         return new KVRecordIterator(_db.get(), txn, start, dir);
@@ -369,7 +369,7 @@ namespace mongo {
         // At the time of this writing, it is only used by 'emptycapped', a test-only command.
         for (boost::scoped_ptr<RecordIterator> iter( getIterator( txn ) );
              !iter->isEOF(); ) {
-            DiskLoc loc = iter->getNext();
+            RecordId loc = iter->getNext();
             deleteRecord( txn, loc );
         }
 
@@ -442,24 +442,24 @@ namespace mongo {
         return _db->setCustomOption( txn, option, info );
     }
 
-    DiskLoc KVRecordStore::_nextId() {
+    RecordId KVRecordStore::_nextId() {
         const uint64_t myId = _nextIdNum.fetchAndAdd(1);
         int a = myId >> 32;
         // This masks the lowest 4 bytes of myId
         int ofs = myId & 0x00000000FFFFFFFF;
-        DiskLoc loc( a, ofs );
+        RecordId loc( a, ofs );
         return loc;
     }
 
     // ---------------------------------------------------------------------- //
 
-    void KVRecordStore::KVRecordIterator::_setCursor(const DiskLoc loc) {
+    void KVRecordStore::KVRecordIterator::_setCursor(const RecordId loc) {
         // We should no cursor at this point, either because we're getting newly
         // constructed or because we're recovering from saved state (and so
         // the old cursor needed to be dropped).
         invariant(!_cursor);
         _cursor.reset();
-        _savedLoc = DiskLoc();
+        _savedLoc = RecordId();
         _savedVal = Slice();
 
         invariant(loc.isValid() && !loc.isNull());
@@ -468,13 +468,13 @@ namespace mongo {
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
-                                                      const DiskLoc &start,
+                                                      const RecordId &start,
                                                       const CollectionScanParams::Direction &dir) :
-        _db(db), _dir(dir), _savedLoc(DiskLoc()), _savedVal(Slice()), _txn(txn), _cursor() {
+        _db(db), _dir(dir), _savedLoc(RecordId()), _savedVal(Slice()), _txn(txn), _cursor() {
         if (start.isNull()) {
-            // A null diskloc means the beginning for a forward cursor,
+            // A null RecordId means the beginning for a forward cursor,
             // and the end for a reverse cursor.
-            _setCursor(_dir == CollectionScanParams::FORWARD ? minDiskLoc : maxDiskLoc);
+            _setCursor(_dir == CollectionScanParams::FORWARD ? RecordId::min() : RecordId::max());
         } else {
             _setCursor(start);
         }
@@ -484,9 +484,9 @@ namespace mongo {
         return !_cursor || !_cursor->ok();
     }
 
-    DiskLoc KVRecordStore::KVRecordIterator::curr() {
+    RecordId KVRecordStore::KVRecordIterator::curr() {
         if (isEOF()) {
-            return DiskLoc();
+            return RecordId();
         }
 
         const RecordIdKey key(_cursor->currKey());
@@ -498,14 +498,14 @@ namespace mongo {
             _savedLoc = curr();
             _savedVal = _cursor->currVal().owned();
         } else {
-            _savedLoc = DiskLoc();
+            _savedLoc = RecordId();
             _savedVal = Slice();
         }
     }
 
-    DiskLoc KVRecordStore::KVRecordIterator::getNext() {
+    RecordId KVRecordStore::KVRecordIterator::getNext() {
         if (isEOF()) {
-            return DiskLoc();
+            return RecordId();
         }
 
         // We need valid copies of _savedLoc / _savedVal since we are
@@ -515,7 +515,7 @@ namespace mongo {
         return _savedLoc;
     }
 
-    void KVRecordStore::KVRecordIterator::invalidate(const DiskLoc& loc) {
+    void KVRecordStore::KVRecordIterator::invalidate(const RecordId& loc) {
         // this only gets called to invalidate potentially buffered
         // `loc' results between saveState() and restoreState(). since
         // we dropped our cursor and have no buffered rows, we do nothing.
@@ -550,7 +550,7 @@ namespace mongo {
         return true;
     }
 
-    RecordData KVRecordStore::KVRecordIterator::dataFor(const DiskLoc& loc) const {
+    RecordData KVRecordStore::KVRecordIterator::dataFor(const RecordId& loc) const {
         invariant(_txn);
 
         // Kind-of tricky:

@@ -60,7 +60,7 @@ namespace mongo {
               _wuow(txn),
               _dupsAllowed(dupsAllowed)
         {}
-        virtual Status addKey(const BSONObj& key, const DiskLoc& loc);
+        virtual Status addKey(const BSONObj& key, const RecordId& loc);
         virtual void commit(bool mayInterrupt) {
             _wuow.commit();
         }
@@ -78,12 +78,12 @@ namespace mongo {
 
         virtual Status insert(OperationContext* txn,
                               const BSONObj& key,
-                              const DiskLoc& loc,
+                              const RecordId& loc,
                               bool dupsAllowed);
 
-        virtual void unindex(OperationContext* txn, const BSONObj& key, const DiskLoc& loc, bool dupsAllowed);
+        virtual void unindex(OperationContext* txn, const BSONObj& key, const RecordId& loc, bool dupsAllowed);
 
-        virtual Status dupKeyCheck(OperationContext* txn, const BSONObj& key, const DiskLoc& loc);
+        virtual Status dupKeyCheck(OperationContext* txn, const BSONObj& key, const RecordId& loc);
 
         virtual void fullValidate(OperationContext* txn, bool full, long long* numKeysOut,
                                   BSONObjBuilder* output) const;

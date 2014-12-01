@@ -95,38 +95,38 @@ namespace mongo {
 
         // CRUD related
 
-        virtual RecordData dataFor( OperationContext* txn, const DiskLoc& loc ) const;
+        virtual RecordData dataFor( OperationContext* txn, const RecordId& loc ) const;
 
         virtual bool findRecord( OperationContext* txn,
-                                 const DiskLoc& loc,
+                                 const RecordId& loc,
                                  RecordData* out ) const;
 
-        virtual void deleteRecord( OperationContext* txn, const DiskLoc& dl );
+        virtual void deleteRecord( OperationContext* txn, const RecordId& dl );
 
-        virtual StatusWith<DiskLoc> insertRecord( OperationContext* txn,
+        virtual StatusWith<RecordId> insertRecord( OperationContext* txn,
                                                   const char* data,
                                                   int len,
                                                   bool enforceQuota );
 
-        virtual StatusWith<DiskLoc> insertRecord( OperationContext* txn,
+        virtual StatusWith<RecordId> insertRecord( OperationContext* txn,
                                                   const DocWriter* doc,
                                                   bool enforceQuota );
 
-        virtual StatusWith<DiskLoc> updateRecord( OperationContext* txn,
-                                                  const DiskLoc& oldLocation,
+        virtual StatusWith<RecordId> updateRecord( OperationContext* txn,
+                                                  const RecordId& oldLocation,
                                                   const char* data,
                                                   int len,
                                                   bool enforceQuota,
                                                   UpdateMoveNotifier* notifier );
 
         virtual Status updateWithDamages( OperationContext* txn,
-                                          const DiskLoc& loc,
+                                          const RecordId& loc,
                                           const RecordData& oldRec,
                                           const char* damageSource,
                                           const mutablebson::DamageVector& damages );
 
         virtual RecordIterator* getIterator( OperationContext* txn,
-                                             const DiskLoc& start = DiskLoc(),
+                                             const RecordId& start = RecordId(),
                                              const CollectionScanParams::Direction& dir =
                                              CollectionScanParams::FORWARD ) const;
 
@@ -161,7 +161,7 @@ namespace mongo {
         virtual bool isCapped() const { return false; }
 
         virtual void temp_cappedTruncateAfter(OperationContext* txn,
-                                              DiskLoc end,
+                                              RecordId end,
                                               bool inclusive) {
             invariant(false);
         }
@@ -180,7 +180,7 @@ namespace mongo {
         class KVRecordIterator : public RecordIterator {
             KVDictionary *_db;
             const CollectionScanParams::Direction _dir;
-            DiskLoc _savedLoc;
+            RecordId _savedLoc;
             Slice _savedVal;
 
             // May change due to saveState() / restoreState()
@@ -188,45 +188,45 @@ namespace mongo {
 
             boost::scoped_ptr<KVDictionary::Cursor> _cursor;
 
-            void _setCursor(const DiskLoc loc);
+            void _setCursor(const RecordId loc);
 
             void _saveLocAndVal();
 
         public: 
             KVRecordIterator(KVDictionary *db, OperationContext *txn,
-                             const DiskLoc &start,
+                             const RecordId &start,
                              const CollectionScanParams::Direction &dir);
 
             bool isEOF();
 
-            DiskLoc curr();
+            RecordId curr();
 
-            DiskLoc getNext();
+            RecordId getNext();
 
-            void invalidate(const DiskLoc& loc);
+            void invalidate(const RecordId& loc);
 
             void saveState();
 
             bool restoreState(OperationContext* txn);
 
-            RecordData dataFor(const DiskLoc& loc) const;
+            RecordData dataFor(const RecordId& loc) const;
         };
 
         void _updateStats(OperationContext *txn, long long nrDelta, long long dsDelta);
 
         // Internal version of dataFor that takes a KVDictionary - used by
         // the RecordIterator to implement dataFor.
-        static RecordData _getDataFor(const KVDictionary* db, OperationContext* txn, const DiskLoc& loc);
+        static RecordData _getDataFor(const KVDictionary* db, OperationContext* txn, const RecordId& loc);
 
-        // Generate the next unique DiskLoc key value for new records stored by this record store.
-        DiskLoc _nextId();
+        // Generate the next unique RecordId key value for new records stored by this record store.
+        RecordId _nextId();
 
         // An owned KVDictionary interface used to store records.
-        // The key is a modified version of DiskLoc (see RecordIdKey) and
+        // The key is a modified version of RecordId (see RecordIdKey) and
         // the value is the raw record data as provided by insertRecord etc.
         boost::scoped_ptr<KVDictionary> _db;
 
-        // A thread-safe 64 bit integer for generating new unique DiskLoc keys.
+        // A thread-safe 64 bit integer for generating new unique RecordId keys.
         AtomicUInt64 _nextIdNum;
 
         // Locally cached copies of these counters.
