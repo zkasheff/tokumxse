@@ -38,12 +38,17 @@ namespace mongo {
     namespace moe = mongo::optionenvironment;
 
     class TokuFTDictionaryOptions {
-    public:
-        TokuFTDictionaryOptions();
+        std::string _objectName;
 
-        Status add(moe::OptionSection* options, const std::string& sectionName, const std::string& shortSectionName, const std::string& objectName);
-        bool handlePreValidation(const moe::Environment& params, const std::string& sectionName);
-        Status store(const moe::Environment& params, const std::vector<std::string>& args, const std::string& sectionName);
+        std::string optionName(const std::string &opt) const;
+        std::string shortOptionName(const std::string &opt) const;
+
+    public:
+        TokuFTDictionaryOptions(const std::string& objectName);
+
+        Status add(moe::OptionSection* options);
+        bool handlePreValidation(const moe::Environment& params);
+        Status store(const moe::Environment& params, const std::vector<std::string>& args);
 
         unsigned long long pageSize;
         unsigned long long readPageSize;

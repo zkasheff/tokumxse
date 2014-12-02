@@ -41,7 +41,7 @@ namespace mongo {
 
     class TokuFTGlobalOptions {
     public:
-        TokuFTGlobalOptions() {};
+        TokuFTGlobalOptions();
 
         Status add(moe::OptionSection* options);
         bool handlePreValidation(const moe::Environment& params);

@@ -36,16 +36,21 @@
 
 namespace mongo {
 
+    TokuFTGlobalOptions::TokuFTGlobalOptions()
+        : collectionOptions("collection"),
+          indexOptions("index")
+    {}
+
     Status TokuFTGlobalOptions::add(moe::OptionSection* options) {
         Status s = engineOptions.add(options);
         if (!s.isOK()) {
             return s;
         }
-        s = collectionOptions.add(options, "storage.tokuft.collectionOptions", "tokuftCollection", "collection");
+        s = collectionOptions.add(options);
         if (!s.isOK()) {
             return s;
         }
-        s = indexOptions.add(options, "storage.tokuft.indexOptions", "tokuftIndex", "index");
+        s = indexOptions.add(options);
         if (!s.isOK()) {
             return s;
         }
@@ -55,8 +60,8 @@ namespace mongo {
 
     bool TokuFTGlobalOptions::handlePreValidation(const moe::Environment& params) {
         return engineOptions.handlePreValidation(params) &&
-                collectionOptions.handlePreValidation(params, "storage.tokuft.collectionOptions") &&
-                indexOptions.handlePreValidation(params, "storage.tokuft.indexOptions");
+                collectionOptions.handlePreValidation(params) &&
+                indexOptions.handlePreValidation(params);
     }
 
     Status TokuFTGlobalOptions::store(const moe::Environment& params,
@@ -66,12 +71,12 @@ namespace mongo {
             return s;
         }
 
-        s = tokuftGlobalOptions.collectionOptions.store(params, args, "storage.tokuft.collectionOptions");
+        s = tokuftGlobalOptions.collectionOptions.store(params, args);
         if (!s.isOK()) {
             return s;
         }
 
-        s = tokuftGlobalOptions.indexOptions.store(params, args, "storage.tokuft.indexOptions");
+        s = tokuftGlobalOptions.indexOptions.store(params, args);
         if (!s.isOK()) {
             return s;
         }

@@ -30,6 +30,8 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include <cctype>
+
 #include "mongo/base/status.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -37,45 +39,60 @@
 
 namespace mongo {
 
-    TokuFTDictionaryOptions::TokuFTDictionaryOptions()
-        : pageSize(4 << 20),
+    TokuFTDictionaryOptions::TokuFTDictionaryOptions(const std::string& objectName)
+        : _objectName(objectName),
+          pageSize(4 << 20),
           readPageSize(64 << 10),
           compression("zlib"),
           fanout(16)
     {}
 
-    Status TokuFTDictionaryOptions::add(moe::OptionSection* options, const std::string& sectionName, const std::string& shortSectionName, const std::string& objectName) {
-        moe::OptionSection tokuftOptions(str::stream() << "TokuFT " << objectName << " options");
+    namespace {
+        static std::string capitalize(const std::string &str) {
+            return str::stream() << (char) toupper(str[0]) << str.substr(1);
+        }
+    }
 
-        tokuftOptions.addOptionChaining(str::stream() << sectionName << ".pageSize",
-                str::stream() << shortSectionName << "PageSize", moe::UnsignedLongLong, str::stream() << "TokuFT " << objectName << " page size");
-        tokuftOptions.addOptionChaining(str::stream() << sectionName << ".readPageSize",
-                str::stream() << shortSectionName << "ReadPageSize", moe::UnsignedLongLong, str::stream() << "TokuFT " << objectName << " read page size");
-        tokuftOptions.addOptionChaining(str::stream() << sectionName << ".compression",
-                str::stream() << shortSectionName << "Compression", moe::String, str::stream() << "TokuFT " << objectName << " compression method (uncompressed, zlib, lzma, or quicklz)");
-        tokuftOptions.addOptionChaining(str::stream() << sectionName << ".fanout",
-                str::stream() << shortSectionName << "Fanout", moe::Int, str::stream() << "TokuFT " << objectName << " fanout");
+    std::string TokuFTDictionaryOptions::optionName(const std::string& opt) const {
+        return str::stream() << "storage.tokuft." << _objectName << "Options." << opt;
+    }
+
+    std::string TokuFTDictionaryOptions::shortOptionName(const std::string& opt) const {
+        return str::stream() << "tokuft" << capitalize(_objectName) << capitalize(opt);
+    }
+
+    Status TokuFTDictionaryOptions::add(moe::OptionSection* options) {
+        moe::OptionSection tokuftOptions(str::stream() << "TokuFT " << _objectName << " options");
+
+        tokuftOptions.addOptionChaining(optionName("pageSize"),
+                shortOptionName("pageSize"), moe::UnsignedLongLong, str::stream() << "TokuFT " << _objectName << " page size");
+        tokuftOptions.addOptionChaining(optionName("readPageSize"),
+                shortOptionName("readPageSize"), moe::UnsignedLongLong, str::stream() << "TokuFT " << _objectName << " read page size");
+        tokuftOptions.addOptionChaining(optionName("compression"),
+                shortOptionName("compression"), moe::String, str::stream() << "TokuFT " << _objectName << " compression method (uncompressed, zlib, lzma, or quicklz)");
+        tokuftOptions.addOptionChaining(optionName("fanout"),
+                shortOptionName("fanout"), moe::Int, str::stream() << "TokuFT " << _objectName << " fanout");
 
         return options->addSection(tokuftOptions);
     }
 
-    bool TokuFTDictionaryOptions::handlePreValidation(const moe::Environment& params, const std::string& sectionName) {
+    bool TokuFTDictionaryOptions::handlePreValidation(const moe::Environment& params) {
         return true;
     }
 
     Status TokuFTDictionaryOptions::store(const moe::Environment& params,
-                                          const std::vector<std::string>& args, const std::string& sectionName) {
-        if (params.count(str::stream() << sectionName << ".pageSize")) {
-            pageSize = params[str::stream() << sectionName << ".pageSize"].as<unsigned long long>();
+                                          const std::vector<std::string>& args) {
+        if (params.count(optionName("pageSize"))) {
+            pageSize = params[optionName("pageSize")].as<unsigned long long>();
         }
-        if (params.count(str::stream() << sectionName << ".readPageSize")) {
-            readPageSize = params[str::stream() << sectionName << ".readPageSize"].as<unsigned long long>();
+        if (params.count(optionName("readPageSize"))) {
+            readPageSize = params[optionName("readPageSize")].as<unsigned long long>();
         }
-        if (params.count(str::stream() << sectionName << ".compression")) {
-            compression = params[str::stream() << sectionName << ".compression"].as<std::string>();
+        if (params.count(optionName("compression"))) {
+            compression = params[optionName("compression")].as<std::string>();
         }
-        if (params.count(str::stream() << sectionName << ".fanout")) {
-            fanout = params[str::stream() << sectionName << ".fanout"].as<int>();
+        if (params.count(optionName("fanout"))) {
+            fanout = params[optionName("fanout")].as<int>();
         }
 
         return Status::OK();
