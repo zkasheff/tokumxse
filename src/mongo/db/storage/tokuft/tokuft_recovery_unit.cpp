@@ -29,8 +29,9 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
-#include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
+#include "mongo/db/storage/tokuft/tokuft_global_options.h"
 #include "mongo/util/log.h"
 
 #include <ftcxx/db_env.hpp>
@@ -52,6 +53,14 @@ namespace mongo {
         _depth++;
     }
 
+    int TokuFTRecoveryUnit::_commitFlags() {
+        if (tokuftGlobalOptions.engineOptions.journalCommitInterval == 0) {
+            return 0;
+        } else {
+            return DB_TXN_NOSYNC;
+        }
+    }
+
     void TokuFTRecoveryUnit::commitUnitOfWork() {
         invariant(_depth > 0);
 
@@ -66,7 +75,7 @@ namespace mongo {
         _changes.clear();
 
         if (_txn.txn() != NULL) {
-            _txn.commit(DB_TXN_NOSYNC);
+            _txn.commit(_commitFlags());
         }
         _txn = ftcxx::DBTxn();
     }
@@ -76,7 +85,7 @@ namespace mongo {
         invariant(_changes.size() == 0);
 
         if (_txn.txn() != NULL) {
-            _txn.commit(DB_TXN_NOSYNC);
+            _txn.commit(_commitFlags());
         }
         _txn = ftcxx::DBTxn();
     }

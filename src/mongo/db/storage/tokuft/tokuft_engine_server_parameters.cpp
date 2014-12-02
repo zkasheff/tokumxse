@@ -64,10 +64,18 @@ namespace mongo {
      * between journal commits.
      */
     class TokuFTEngineJournalCommitIntervalSetting : public ServerParameter {
-        Status adjust(uint32_t newVal) const {
-            Status s = statusFromTokuFTError(globalEnv().change_fsync_log_period(newVal));
+        Status adjust(long long newValue) const {
+            if (newValue < -1 || newValue > 300) {
+                StringBuilder sb;
+                sb << "tokuftEngineJournalCommitInterval must be between -1 and 300, but attempted to set to: "
+                   << newValue;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+
+            // clamp to non-negative numbers, -1 means "never sync", 0 means "sync on every commit"
+            Status s = statusFromTokuFTError(globalEnv().change_fsync_log_period(static_cast<uint32_t>(newValue > 0 ? newValue : 0)));
             if (s.isOK()) {
-                tokuftGlobalOptions.engineOptions.journalCommitInterval = newVal;
+                tokuftGlobalOptions.engineOptions.journalCommitInterval = static_cast<unsigned>(newValue);
             }
             return s;
         }
@@ -99,14 +107,8 @@ namespace mongo {
                 return Status(ErrorCodes::BadValue, sb.str());
             }
             newValue = newValueElement.numberLong();
-            if (newValue <= 0 || newValue >= 300) {
-                StringBuilder sb;
-                sb << "tokuftEngineJournalCommitInterval must be between 0 and 300, but attempted to set to: "
-                   << newValue;
-                return Status(ErrorCodes::BadValue, sb.str());
-            }
 
-            return adjust(static_cast<unsigned>(newValue));
+            return adjust(newValue);
         }
 
         virtual Status setFromString(const std::string& str) {
@@ -115,14 +117,8 @@ namespace mongo {
             if (!status.isOK()) {
                 return status;
             }
-            if (newValue <= 0 || newValue >= 300) {
-                StringBuilder sb;
-                sb << "tokuftEngineJournalCommitInterval must be between 0 and 300, but attempted to set to: "
-                   << newValue;
-                return Status(ErrorCodes::BadValue, sb.str());
-            }
 
-            return adjust(static_cast<unsigned>(newValue));
+            return adjust(newValue);
         }
     } tokuftEngineJournalCommitIntervalSetting;
 

@@ -79,6 +79,8 @@ namespace mongo {
 
         static bool _opCtxIsWriting(OperationContext *opCtx);
 
+        static int _commitFlags();
+
     public:
         // -- TokuFT Specific
 
