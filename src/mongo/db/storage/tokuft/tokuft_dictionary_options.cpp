@@ -32,6 +32,7 @@
 
 #include <cctype>
 
+#include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -84,15 +85,42 @@ namespace mongo {
                                           const std::vector<std::string>& args) {
         if (params.count(optionName("pageSize"))) {
             pageSize = params[optionName("pageSize")].as<unsigned long long>();
+            if (pageSize <= 0) {
+                StringBuilder sb;
+                sb << optionName("pageSize") << " must be > 0, but attempted to set to: "
+                   << pageSize;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count(optionName("readPageSize"))) {
             readPageSize = params[optionName("readPageSize")].as<unsigned long long>();
+            if (readPageSize <= 0) {
+                StringBuilder sb;
+                sb << optionName("readPageSize") << " must be > 0, but attempted to set to: "
+                   << readPageSize;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count(optionName("compression"))) {
             compression = params[optionName("compression")].as<std::string>();
+            if (compression != "zlib" &&
+                compression != "quicklz" &&
+                compression != "lzma" &&
+                compression != "none") {
+                StringBuilder sb;
+                sb << optionName("compression") << " must be one of \"zlib\", \"quicklz\", \"lzma\", or \"none\", but attempted to set to: "
+                   << compression;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count(optionName("fanout"))) {
             fanout = params[optionName("fanout")].as<int>();
+            if (fanout <= 0) {
+                StringBuilder sb;
+                sb << optionName("fanout") << " must be > 0, but attempted to set to: "
+                   << fanout;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
 
         return Status::OK();
