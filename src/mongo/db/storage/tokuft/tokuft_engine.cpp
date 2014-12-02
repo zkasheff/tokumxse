@@ -34,6 +34,7 @@
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
+#include "mongo/db/storage/tokuft/tokuft_global_options.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -74,26 +75,43 @@ namespace mongo {
 
     }
 
-    TokuFTEngine::TokuFTEngine(const std::string &path)
+    TokuFTEngine::TokuFTEngine(const std::string& path)
         : _env(nullptr),
           _metadataDict(nullptr)
     {
-        ProcessInfo pi;
-        unsigned long long memSizeMB = pi.getMemSizeMB();
-        size_t cacheSize = (memSizeMB / 2) * (1<<20);
+        const TokuFTEngineOptions& engineOptions = tokuftGlobalOptions.engineOptions;
+
+        unsigned long long cacheSize = engineOptions.cacheSize;
+        if (!cacheSize) {
+            ProcessInfo pi;
+            unsigned long long memSizeMB = pi.getMemSizeMB();
+            cacheSize = (memSizeMB / 2) << 20;
+        }
+
         uint32_t cacheSizeGB = cacheSize >> 30;
         uint32_t cacheSizeB = cacheSize & ~uint32_t(1<<30);
 
+        // TODO: Lock wait timeout callback, lock killed callback
+        // TODO: logdir
+        ftcxx::DBEnvBuilder builder = ftcxx::DBEnvBuilder()
+                .set_product_name("TokuFT")
+                .set_cachesize(cacheSizeGB, cacheSizeB)
+                .checkpointing_set_period(engineOptions.checkpointPeriod)
+                .cleaner_set_iterations(engineOptions.cleanerIterations)
+                .cleaner_set_period(engineOptions.cleanerPeriod)
+                .set_direct_io(engineOptions.directio)
+                .set_fs_redzone(engineOptions.fsRedzone)
+                .change_fsync_log_period(engineOptions.journalCommitInterval)
+                .set_lock_wait_time_msec(engineOptions.lockTimeout)
+                .set_compress_buffers_before_eviction(engineOptions.compressBuffersBeforeEviction)
+                .set_cachetable_bucket_mutexes(engineOptions.numCachetableBucketMutexes);
+
+        if (engineOptions.locktreeMaxMemory) {
+            builder.set_lock_wait_time_msec(engineOptions.locktreeMaxMemory);
+        }
+
         log() << "TokuFT: opening environment at " << path << std::endl;
-        _env = ftcxx::DBEnvBuilder()
-               // TODO: Direct I/O
-               // TODO: Lock wait timeout callback, lock killed callback
-               // TODO: redzone, logdir
-               // TODO: cleaner period, cleaner iterations
-               .set_cachesize(cacheSizeGB, cacheSizeB)
-               .checkpointing_set_period(60)
-               .change_fsync_log_period(100)
-               .set_lock_wait_time_msec(4000)
+        _env = builder
                .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
                .set_update(&ftcxx::wrapped_updater<tokuft_update>)
                .open(path.c_str(), env_flags, env_mode);

@@ -4,6 +4,19 @@ Import("has_option")
 if has_option("tokuft"):
 
     env.Library(
+        target='storage_tokuft_options',
+        source=[
+            'tokuft_dictionary_options.cpp',
+            'tokuft_engine_options.cpp',
+            'tokuft_global_options.cpp',
+            'tokuft_options_init.cpp',
+            ],
+        LIBDEPS=[
+            '$BUILD_DIR/mongo/util/options_parser/options_parser',
+            ]
+        )
+
+    env.Library(
         target= 'storage_tokuft_base',
         source= [
             'tokuft_engine.cpp',
@@ -11,6 +24,7 @@ if has_option("tokuft"):
             'tokuft_recovery_unit.cpp',
             ],
         LIBDEPS= [
+            'storage_tokuft_options',
             '$BUILD_DIR/mongo/bson',
             '$BUILD_DIR/mongo/db/catalog/collection_options',
             '$BUILD_DIR/mongo/db/index/index_descriptor',
