@@ -90,6 +90,8 @@ namespace mongo {
 
         std::vector<std::string> getAllIdents(OperationContext *opCtx) const;
 
+        ftcxx::DBEnv& env() { return _env; }
+
     private:
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;

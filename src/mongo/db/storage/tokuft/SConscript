@@ -46,7 +46,8 @@ if has_option("tokuft"):
     env.Library(
         target= 'storage_tokuft',
         source= [
-            'tokuft_init.cpp'
+            'tokuft_init.cpp',
+            'tokuft_engine_server_parameters.cpp',
             ],
         LIBDEPS= [
             'storage_tokuft_base',
