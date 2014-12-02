@@ -97,4 +97,19 @@ namespace mongo {
 
         return Status::OK();
     }
+
+    void TokuFTDictionaryOptions::setOptions(const CollectionOptions& options) {
+        if (options.storageEngine.hasField("pageSize")) {
+            pageSize = options.storageEngine["pageSize"].numberLong();
+        }
+        if (options.storageEngine.hasField("readPageSize")) {
+            readPageSize = options.storageEngine["readPageSize"].numberLong();
+        }
+        if (options.storageEngine.hasField("compression")) {
+            compression = options.storageEngine["compression"].String();
+        }
+        if (options.storageEngine.hasField("fanout")) {
+            fanout = options.storageEngine["fanout"].numberLong();
+        }
+    }
 }

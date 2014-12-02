@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "mongo/db/catalog/collection_options.h"
 #include "mongo/util/options_parser/startup_options.h"
 
 namespace mongo {
@@ -48,6 +49,8 @@ namespace mongo {
         Status add(moe::OptionSection* options);
         bool handlePreValidation(const moe::Environment& params);
         Status store(const moe::Environment& params, const std::vector<std::string>& args);
+
+        void setOptions(const CollectionOptions& options);
 
         unsigned long long pageSize;
         unsigned long long readPageSize;

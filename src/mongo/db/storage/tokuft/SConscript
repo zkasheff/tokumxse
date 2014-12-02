@@ -12,6 +12,7 @@ if has_option("tokuft"):
             'tokuft_options_init.cpp',
             ],
         LIBDEPS=[
+            '$BUILD_DIR/mongo/db/catalog/collection_options',
             '$BUILD_DIR/mongo/util/options_parser/options_parser',
             ]
         )
