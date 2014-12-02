@@ -21,6 +21,7 @@ if has_option("tokuft"):
         target= 'storage_tokuft_base',
         source= [
             'tokuft_engine.cpp',
+            'tokuft_errors.cpp',
             'tokuft_dictionary.cpp',
             'tokuft_recovery_unit.cpp',
             ],

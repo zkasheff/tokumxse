@@ -32,10 +32,10 @@
 
 #include "mongo/base/error_codes.h"
 #include "mongo/db/catalog/collection_options.h"
-#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
+#include "mongo/db/storage/tokuft/tokuft_errors.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/log.h"
@@ -71,44 +71,6 @@ namespace mongo {
         return ru->txn(opCtx);
     }
 
-    Status ft_exception2status(const ftcxx::ft_exception &ftexc) {
-        int r = ftexc.code();
-        std::string errmsg = str::stream() << "TokuFT: " << ftexc.what();
-        if (r == DB_KEYEXIST) {
-            return Status(ErrorCodes::DuplicateKey, errmsg);
-        } else if (r == DB_LOCK_DEADLOCK) {
-            throw WriteConflictException();
-            //return Status(ErrorCodes::WriteConflict, errmsg);
-        } else if (r == DB_LOCK_NOTGRANTED) {
-            throw WriteConflictException();
-            //return Status(ErrorCodes::LockTimeout, errmsg);
-        } else if (r == DB_NOTFOUND) {
-            return Status(ErrorCodes::NoSuchKey, errmsg);
-        } else if (r == TOKUDB_OUT_OF_LOCKS) {
-            throw WriteConflictException();
-            //return Status(ErrorCodes::LockFailed, errmsg);
-        } else if (r == TOKUDB_DICTIONARY_TOO_OLD) {
-            return Status(ErrorCodes::UnsupportedFormat, errmsg);
-        } else if (r == TOKUDB_DICTIONARY_TOO_NEW) {
-            return Status(ErrorCodes::UnsupportedFormat, errmsg);
-        } else if (r == TOKUDB_MVCC_DICTIONARY_TOO_NEW) {
-            throw WriteConflictException();
-            //return Status(ErrorCodes::NamespaceNotFound, errmsg);
-        }
-
-        return Status(ErrorCodes::InternalError,
-                      str::stream() << "TokuFT: internal error code "
-                      << ftexc.code() << ": " << ftexc.what());
-    }
-
-    static Status error2status(int r) {
-        if (r == 0) {
-            return Status::OK();
-        }
-        ftcxx::ft_exception ftexc(r);
-        return ft_exception2status(ftexc);
-    }
-
     Status TokuFTDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value) const {
         class Callback {
             Slice &_v;
@@ -124,23 +86,23 @@ namespace mongo {
                              // TODO: No doc-level locking yet, so never take locks on read.
                              DB_PRELOCKED | DB_PRELOCKED_WRITE,
                              cb);
-        return error2status(r);
+        return statusFromTokuFTError(r);
     }
 
     Status TokuFTDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value) {
         int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value));
-        return error2status(r);
+        return statusFromTokuFTError(r);
     }
 
     Status TokuFTDictionary::update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message) {
         Slice value = message.serialize();
         int r = _db.update(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value));
-        return error2status(r);
+        return statusFromTokuFTError(r);
     }
 
     Status TokuFTDictionary::remove(OperationContext *opCtx, const Slice &key) {
         int r = _db.del(_getDBTxn(opCtx), slice2ftslice(key));
-        return error2status(r);
+        return statusFromTokuFTError(r);
     }
 
     KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const Slice &key, const int direction) const {
@@ -148,7 +110,7 @@ namespace mongo {
             return new Cursor(*this, opCtx, key, direction);
         } catch (ftcxx::ft_exception &e) {
             // Will throw WriteConflictException if needed, discard status
-            ft_exception2status(e);
+            statusFromTokuFTException(e);
             // otherwise rethrow
             throw;
         }
@@ -159,7 +121,7 @@ namespace mongo {
             return new Cursor(*this, opCtx, direction);
         } catch (ftcxx::ft_exception &e) {
             // Will throw WriteConflictException if needed, discard status
-            ft_exception2status(e);
+            statusFromTokuFTException(e);
             // otherwise rethrow
             throw;
         }
@@ -223,7 +185,7 @@ namespace mongo {
             _cur.seek(slice2ftslice(key));
         } catch (ftcxx::ft_exception &e) {
             // Will throw WriteConflictException if needed, discard status
-            ft_exception2status(e);
+            statusFromTokuFTException(e);
             // otherwise rethrow
             throw;
         }
@@ -237,7 +199,7 @@ namespace mongo {
             _ok = _cur.next(key, val);
         } catch (ftcxx::ft_exception &e) {
             // Will throw WriteConflictException if needed, discard status
-            ft_exception2status(e);
+            statusFromTokuFTException(e);
             // otherwise rethrow
             throw;
         }
