@@ -43,66 +43,61 @@
 
 namespace mongo {
 
-    namespace {
-
-        static ftcxx::DBEnv& globalEnv() {
-            StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
-            massert(28577, "no storage engine available", storageEngine);
-            KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
-            massert(28578, "storage engine is not a KVStorageEngine", kvStorageEngine);
-            KVEngine* kvEngine = kvStorageEngine->getEngine();
-            invariant(kvEngine);
-            TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
-            massert(28579, "storage engine is not TokuFT", tokuftEngine);
-            return tokuftEngine->env();
-        }
-
-    }
-
     /**
-     * Specify an integer between 0 and 300 signifying the number of milliseconds (ms)
-     * between journal commits.
+     * Implements a ServerParameter that must be of integer type and has a validation and
+     * modification phase (the modification will usually call into tokuft).
      */
-    class TokuFTEngineJournalCommitIntervalSetting : public ServerParameter {
+    template<typename ValueType>
+    class TokuFTEngineServerParameter : public ServerParameter {
+        std::string _shortName;
+        ValueType& _globalOptionValue;
+
         Status adjust(long long newValue) const {
-            if (newValue < -1 || newValue > 300) {
-                StringBuilder sb;
-                sb << "tokuftEngineJournalCommitInterval must be between -1 and 300, but attempted to set to: "
-                   << newValue;
-                return Status(ErrorCodes::BadValue, sb.str());
+            Status s = check(newValue);
+            if (!s.isOK()) {
+                return s;
             }
 
-            // clamp to non-negative numbers, -1 means "never sync", 0 means "sync on every commit"
-            Status s = statusFromTokuFTError(globalEnv().change_fsync_log_period(static_cast<uint32_t>(newValue > 0 ? newValue : 0)));
-            if (s.isOK()) {
-                tokuftGlobalOptions.engineOptions.journalCommitInterval = static_cast<unsigned>(newValue);
+            s = modify(static_cast<ValueType>(newValue));
+            if (!s.isOK()) {
+                return s;
             }
-            return s;
+
+            _globalOptionValue = static_cast<ValueType>(newValue);
+            return Status::OK();
         }
+
+    protected:
+        virtual Status check(long long newValue) const = 0;
+
+        virtual Status modify(ValueType newValue) const = 0;
 
     public:
-        TokuFTEngineJournalCommitIntervalSetting() :
-            ServerParameter(ServerParameterSet::getGlobal(), "tokuftEngineJournalCommitInterval",
-                    false, // allowedToChangeAtStartup
-                    true // allowedToChangeAtRuntime
-                    ) {}
+        TokuFTEngineServerParameter(const std::string& shortName, ValueType& globalOptionValue)
+            : ServerParameter(ServerParameterSet::getGlobal(), shortName,
+                              false, // allowedToChangeAtStartup
+                              true   // allowedToChangeAtRuntime
+                              ),
+              _shortName(shortName),
+              _globalOptionValue(globalOptionValue)
+        {}
 
         virtual void append(OperationContext* txn, BSONObjBuilder& b, const std::string& name) {
-            b << name << tokuftGlobalOptions.engineOptions.journalCommitInterval;
+            b << name << _globalOptionValue;
         }
 
         virtual Status set(const BSONElement& newValueElement) {
             long long newValue;
             if (!newValueElement.isNumber()) {
                 StringBuilder sb;
-                sb << "Expected number type for tokuftEngineJournalCommitInterval via setParameter command: "
+                sb << "Expected number type for " << _shortName << " via setParameter command: "
                    << newValueElement;
                 return Status(ErrorCodes::BadValue, sb.str());
             }
             if (newValueElement.type() == NumberDouble &&
                 (newValueElement.numberDouble() - newValueElement.numberLong()) > 0) {
                 StringBuilder sb;
-                sb << "tokuftEngineJournalCommitInterval must be a whole number: "
+                sb << _shortName << " must be a whole number: "
                    << newValueElement;
                 return Status(ErrorCodes::BadValue, sb.str());
             }
@@ -119,6 +114,137 @@ namespace mongo {
             }
 
             return adjust(newValue);
+        }
+    };
+
+    namespace {
+
+        static ftcxx::DBEnv& globalEnv() {
+            StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
+            massert(28577, "no storage engine available", storageEngine);
+            KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
+            massert(28578, "storage engine is not a KVStorageEngine", kvStorageEngine);
+            KVEngine* kvEngine = kvStorageEngine->getEngine();
+            invariant(kvEngine);
+            TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
+            massert(28579, "storage engine is not TokuFT", tokuftEngine);
+            return tokuftEngine->env();
+        }
+
+    }
+
+    class TokuFTEngineCheckpointPeriodSetting : public TokuFTEngineServerParameter<int> {
+    public:
+        TokuFTEngineCheckpointPeriodSetting()
+            : TokuFTEngineServerParameter("tokuftEngineCheckpointPeriod",
+                                          tokuftGlobalOptions.engineOptions.checkpointPeriod)
+        {}
+
+    protected:
+        Status check(long long newValue) const {
+            if (newValue <= 0) {
+                StringBuilder sb;
+                sb << "tokuftEngineCheckpointPeriod must be > 0, but attempted to set to: "
+                   << newValue;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+            return Status::OK();
+        }
+
+        Status modify(int newValue) const {
+            return statusFromTokuFTError(globalEnv().checkpointing_set_period(newValue));
+        }
+    } tokuftEngineCheckpointPeriodSetting;
+
+    class TokuFTEngineCleanerIterationsSetting : public TokuFTEngineServerParameter<int> {
+    public:
+        TokuFTEngineCleanerIterationsSetting()
+            : TokuFTEngineServerParameter("tokuftEngineCleanerIterations",
+                                          tokuftGlobalOptions.engineOptions.cleanerIterations)
+        {}
+
+    protected:
+        Status check(long long newValue) const {
+            if (newValue < 0) {
+                StringBuilder sb;
+                sb << "tokuftEngineCleanerIterations must be >= 0, but attempted to set to: "
+                   << newValue;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+            return Status::OK();
+        }
+
+        Status modify(int newValue) const {
+            return statusFromTokuFTError(globalEnv().cleaner_set_iterations(newValue));
+        }
+    } tokuftEngineCleanerIterationsSetting;
+
+    class TokuFTEngineCleanerPeriodSetting : public TokuFTEngineServerParameter<int> {
+    public:
+        TokuFTEngineCleanerPeriodSetting()
+            : TokuFTEngineServerParameter("tokuftEngineCleanerPeriod",
+                                          tokuftGlobalOptions.engineOptions.cleanerPeriod)
+        {}
+
+    protected:
+        Status check(long long newValue) const {
+            if (newValue < 0) {
+                StringBuilder sb;
+                sb << "tokuftEngineCleanerPeriod must be >= 0, but attempted to set to: "
+                   << newValue;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+            return Status::OK();
+        }
+
+        Status modify(int newValue) const {
+            return statusFromTokuFTError(globalEnv().cleaner_set_period(newValue));
+        }
+    } tokuftEngineCleanerPeriodSetting;
+
+    class TokuFTEngineLockTimeoutSetting : public TokuFTEngineServerParameter<int> {
+    public:
+        TokuFTEngineLockTimeoutSetting()
+            : TokuFTEngineServerParameter("tokuftEngineLockTimeout",
+                                          tokuftGlobalOptions.engineOptions.lockTimeout)
+        {}
+
+    protected:
+        Status check(long long newValue) const {
+            if (newValue < 1 || newValue > 60000) {
+                StringBuilder sb;
+                sb << "tokuftEngineLockTimeout must be between 1 and 60000, but attempted to set to: "
+                   << newValue;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+            return Status::OK();
+        }
+
+        Status modify(int newValue) const {
+            return statusFromTokuFTError(globalEnv().change_fsync_log_period(newValue));
+        }
+    } tokuftEngineLockTimeoutSetting;
+
+    class TokuFTEngineJournalCommitIntervalSetting : public TokuFTEngineServerParameter<int> {
+    public:
+        TokuFTEngineJournalCommitIntervalSetting()
+            : TokuFTEngineServerParameter("tokuftEngineJournalCommitInterval",
+                                          tokuftGlobalOptions.engineOptions.journalCommitInterval)
+        {}
+
+    protected:
+        Status check(long long newValue) const {
+            if (newValue <= 0 || newValue > 300) {
+                StringBuilder sb;
+                sb << "tokuftEngineJournalCommitInterval must be between 1 and 300, but attempted to set to: "
+                   << newValue;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+            return Status::OK();
+        }
+
+        Status modify(int newValue) const {
+            return statusFromTokuFTError(globalEnv().change_fsync_log_period(newValue));
         }
     } tokuftEngineJournalCommitIntervalSetting;
 

@@ -30,6 +30,7 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/util/log.h"
 #include "mongo/db/storage/tokuft/tokuft_engine_options.h"
@@ -87,30 +88,72 @@ namespace mongo {
                                  const std::vector<std::string>& args) {
         if (params.count("storage.tokuft.engineOptions.cacheSize")) {
             cacheSize = params["storage.tokuft.engineOptions.cacheSize"].as<unsigned long long>();
+            if (cacheSize < (1ULL<<30)) {
+                warning() << "TokuFT: cacheSize is under 1GB, this is not recommended for production." << std::endl;
+            }
         }
         if (params.count("storage.tokuft.engineOptions.checkpointPeriod")) {
             checkpointPeriod = params["storage.tokuft.engineOptions.checkpointPeriod"].as<int>();
+            if (checkpointPeriod <= 0) {
+                StringBuilder sb;
+                sb << "storage.tokuft.engineOptions.checkpointPeriod must be > 0, but attempted to set to: "
+                   << checkpointPeriod;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count("storage.tokuft.engineOptions.cleanerIterations")) {
             cleanerIterations = params["storage.tokuft.engineOptions.cleanerIterations"].as<int>();
+            if (cleanerIterations < 0) {
+                StringBuilder sb;
+                sb << "storage.tokuft.engineOptions.cleanerIterations must be >= 0, but attempted to set to: "
+                   << cleanerIterations;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count("storage.tokuft.engineOptions.cleanerPeriod")) {
             cleanerPeriod = params["storage.tokuft.engineOptions.cleanerPeriod"].as<int>();
+            if (cleanerPeriod < 0) {
+                StringBuilder sb;
+                sb << "storage.tokuft.engineOptions.cleanerPeriod must be >= 0, but attempted to set to: "
+                   << cleanerPeriod;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count("storage.tokuft.engineOptions.directio")) {
             directio = params["storage.tokuft.engineOptions.directio"].as<bool>();
         }
         if (params.count("storage.tokuft.engineOptions.fsRedzone")) {
             fsRedzone = params["storage.tokuft.engineOptions.fsRedzone"].as<int>();
+            if (fsRedzone < 0 || fsRedzone > 100) {
+                StringBuilder sb;
+                sb << "storage.tokuft.engineOptions.fsRedzone must be between 0 and 100, but attempted to set to: "
+                   << fsRedzone;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count("storage.tokuft.engineOptions.journalCommitInterval")) {
             journalCommitInterval = params["storage.tokuft.engineOptions.journalCommitInterval"].as<int>();
+            if (journalCommitInterval < 1 || journalCommitInterval > 300) {
+                StringBuilder sb;
+                sb << "storage.tokuft.engineOptions.journalCommitInterval must be between 1 and 300, but attempted to set to: "
+                   << journalCommitInterval;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count("storage.tokuft.engineOptions.lockTimeout")) {
             lockTimeout = params["storage.tokuft.engineOptions.lockTimeout"].as<int>();
+            if (lockTimeout < 1 || lockTimeout > 60000) {
+                StringBuilder sb;
+                sb << "storage.tokuft.engineOptions.lockTimeout must be between 1 and 60000, but attempted to set to: "
+                   << lockTimeout;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         if (params.count("storage.tokuft.engineOptions.locktreeMaxMemory")) {
             locktreeMaxMemory = params["storage.tokuft.engineOptions.locktreeMaxMemory"].as<unsigned long long>();
+            if (lockTimeout < (100LL<<20)) {
+                warning() << "TokuFT: locktreeMaxMemory is under 100MB, this is not recommended for production." << std::endl;
+            }
         }
         if (params.count("storage.tokuft.engineOptions.compressBuffersBeforeEviction")) {
             compressBuffersBeforeEviction = params["storage.tokuft.engineOptions.compressBuffersBeforeEviction"].as<bool>();
