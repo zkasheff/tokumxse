@@ -49,8 +49,10 @@ namespace mongo {
             : KVStorageEngine(new TokuFTEngine(path)),
               _durable(durable)
         {
-            warning() << "TokuFT: Initializing with --nojournal.  Note that this will cause {j: true} writes to fail, but will not actually disable journaling." << std::endl;
-            warning() << "TokuFT: This is only for tests, there is no reason to run with --nojournal in production." << std::endl;
+            if (!_durable) {
+                warning() << "TokuFT: Initializing with --nojournal.  Note that this will cause {j: true} writes to fail, but will not actually disable journaling." << std::endl;
+                warning() << "TokuFT: This is only for tests, there is no reason to run with --nojournal in production." << std::endl;
+            }
         }
 
         // Even though the engine is always durable, we sometimes need to fake that we aren't for tests.  SERVER-15942
