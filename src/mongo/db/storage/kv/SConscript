@@ -27,11 +27,13 @@ env.Library(
     )
 
 # KVDatabaseCatalogEntry::getIndex() depends on index access methods
+# KVStorageEngine::cleanShutdown() depends on dbHolder() and DatabaseHolder::closeAll().
 # in $BUILD_DIR/mongo/serveronly.
 env.Library(
     target='kv_engine',
     source=[
         'kv_database_catalog_entry_get_index.cpp',
+        'kv_close_all_databases.cpp',
         ],
     LIBDEPS=[
         'kv_database_catalog_entry_core',
@@ -40,12 +42,13 @@ env.Library(
         ]
     )
 
-# Stubs out KVDatabaseCatalogEntry::getIndex() for testing.
+# Stubs out KVDatabaseCatalogEntry::getIndex() and DatabaseHolder stuff for testing.
 # Should not be referenced outside this SConscript file.
 env.Library(
     target='kv_engine_mock',
     source=[
-        'kv_database_catalog_entry_get_index_mock.cpp'
+        'kv_database_catalog_entry_get_index_mock.cpp',
+        'kv_database_catalog_entry_database_holder_mock.cpp',
         ],
     LIBDEPS=[
         'kv_database_catalog_entry_core',
