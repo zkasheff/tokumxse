@@ -32,12 +32,10 @@
 
 #include "mongo/base/parse_number.h"
 #include "mongo/base/status.h"
-#include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
-#include "mongo/db/global_environment_experiment.h"
 #include "mongo/db/server_parameters.h"
-#include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
+#include "mongo/db/storage/tokuft/tokuft_engine_global_accessor.h"
 #include "mongo/db/storage/tokuft/tokuft_errors.h"
 #include "mongo/db/storage/tokuft/tokuft_global_options.h"
 
@@ -117,22 +115,6 @@ namespace mongo {
         }
     };
 
-    namespace {
-
-        static ftcxx::DBEnv& globalEnv() {
-            StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
-            massert(28577, "no storage engine available", storageEngine);
-            KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
-            massert(28578, "storage engine is not a KVStorageEngine", kvStorageEngine);
-            KVEngine* kvEngine = kvStorageEngine->getEngine();
-            invariant(kvEngine);
-            TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
-            massert(28579, "storage engine is not TokuFT", tokuftEngine);
-            return tokuftEngine->env();
-        }
-
-    }
-
     class TokuFTEngineCheckpointPeriodSetting : public TokuFTEngineServerParameter<int> {
     public:
         TokuFTEngineCheckpointPeriodSetting()
@@ -152,7 +134,7 @@ namespace mongo {
         }
 
         Status modify(int newValue) const {
-            return statusFromTokuFTError(globalEnv().checkpointing_set_period(newValue));
+            return statusFromTokuFTError(tokuftGlobalEnv().checkpointing_set_period(newValue));
         }
     } tokuftEngineCheckpointPeriodSetting;
 
@@ -175,7 +157,7 @@ namespace mongo {
         }
 
         Status modify(int newValue) const {
-            return statusFromTokuFTError(globalEnv().cleaner_set_iterations(newValue));
+            return statusFromTokuFTError(tokuftGlobalEnv().cleaner_set_iterations(newValue));
         }
     } tokuftEngineCleanerIterationsSetting;
 
@@ -198,7 +180,7 @@ namespace mongo {
         }
 
         Status modify(int newValue) const {
-            return statusFromTokuFTError(globalEnv().cleaner_set_period(newValue));
+            return statusFromTokuFTError(tokuftGlobalEnv().cleaner_set_period(newValue));
         }
     } tokuftEngineCleanerPeriodSetting;
 
@@ -221,7 +203,7 @@ namespace mongo {
         }
 
         Status modify(int newValue) const {
-            return statusFromTokuFTError(globalEnv().change_fsync_log_period(newValue));
+            return statusFromTokuFTError(tokuftGlobalEnv().change_fsync_log_period(newValue));
         }
     } tokuftEngineLockTimeoutSetting;
 
@@ -244,7 +226,7 @@ namespace mongo {
         }
 
         Status modify(int newValue) const {
-            return statusFromTokuFTError(globalEnv().change_fsync_log_period(newValue));
+            return statusFromTokuFTError(tokuftGlobalEnv().change_fsync_log_period(newValue));
         }
     } tokuftEngineJournalCommitIntervalSetting;
 

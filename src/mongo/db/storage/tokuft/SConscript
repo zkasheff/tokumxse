@@ -47,6 +47,7 @@ if has_option("tokuft"):
         target= 'storage_tokuft',
         source= [
             'tokuft_init.cpp',
+            'tokuft_engine_global_accessor.cpp',
             'tokuft_engine_server_parameters.cpp',
             ],
         LIBDEPS= [
