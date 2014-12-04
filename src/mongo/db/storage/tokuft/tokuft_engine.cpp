@@ -73,6 +73,114 @@ namespace mongo {
             return 0;
         }
 
+        static const char *getIndexName(DB *db) {
+            if (db != NULL) {
+                return db->get_dname(db);
+            } else {
+                return "$ydb_internal";
+            }
+        }
+
+        static void prettyBounds(DB *db, const DBT *leftKey, const DBT *rightKey,
+                                 BSONArrayBuilder &bounds, bool isInteger) {
+            if (leftKey->data == NULL) {
+                bounds.append("-infinity");
+            } else {
+                if (isInteger) {
+                    BSONObjBuilder b(bounds.subobjStart());
+                    b.appendNumber("record_id", Slice(static_cast<char *>(leftKey->data), leftKey->size).as<uint64_t>());
+                    b.doneFast();
+                } else {
+                    bounds.append(BSONObj((const char *)leftKey->data));
+                }
+            }
+
+            if (rightKey->data == NULL) {
+                bounds.append("+infinity");
+            } else {
+                if (isInteger) {
+                    BSONObjBuilder b(bounds.subobjStart());
+                    b.appendNumber("record_id", Slice(static_cast<char *>(rightKey->data), rightKey->size).as<uint64_t>());
+                    b.doneFast();
+                } else {
+                    bounds.append(BSONObj((const char *)rightKey->data));
+                }
+            }
+        }
+
+
+        static int iterateTransactionsCallback(uint64_t txnid, uint64_t clientId,
+                                               iterate_row_locks_callback iterateLocks,
+                                               void *locksExtra, void *extra) {
+            // We ignore clientId because txnid is sufficient for finding
+            // the associated operation in db.currentOp()
+            BSONObjBuilder status;
+            status.appendNumber("txnid", txnid);
+            BSONArrayBuilder locks(status.subarrayStart("rowLocks"));
+            {
+                DB *db;
+                DBT leftKey, rightKey;
+                while (iterateLocks(&db, &leftKey, &rightKey, locksExtra) == 0) {
+                    if (locks.len() + leftKey.size + rightKey.size > BSONObjMaxUserSize - 1024) {
+                        // We're running out of space, better stop here.
+                        locks.append("too many results to return");
+                        break;
+                    }
+                    BSONObjBuilder rowLock(locks.subobjStart());
+                    StringData indexName(getIndexName(db));
+                    bool isRecordStore = indexName.startsWith("collection");
+                    rowLock.append("index", indexName);
+                    BSONArrayBuilder bounds(rowLock.subarrayStart("bounds"));
+                    prettyBounds(db, &leftKey, &rightKey, bounds, isRecordStore);
+                    bounds.doneFast();
+                    rowLock.doneFast();
+                }
+                locks.doneFast();
+            }
+            LOG(2) << "TokuFT: live transaction: " << status.done();
+            return 0;
+        }
+
+        static int pendingLockRequestsCallback(DB *db, uint64_t requestingTxnid,
+                                               const DBT *leftKey, const DBT *rightKey,
+                                               uint64_t blockingTxnid, uint64_t startTime,
+                                               void *extra) {
+            BSONObjBuilder status;
+            StringData indexName(getIndexName(db));
+            bool isRecordStore = indexName.startsWith("collection");
+            status.append("index", indexName);
+            status.appendNumber("requestingTxnid", requestingTxnid);
+            status.appendNumber("blockingTxnid", blockingTxnid);
+            status.appendDate("started", startTime);
+            {
+                BSONArrayBuilder bounds(status.subarrayStart("bounds"));
+                prettyBounds(db, leftKey, rightKey, bounds, isRecordStore);
+                bounds.doneFast();
+            }
+            LOG(2) << "TokuFT: pending lock: " << status.done();
+            return 0;
+        }
+
+        static void lockNotGrantedCallback(DB *db, uint64_t requestingTxnid,
+                                           const DBT *leftKey, const DBT *rightKey,
+                                           uint64_t blockingTxnid) {
+            BSONObjBuilder info;
+            StringData indexName(getIndexName(db));
+            bool isRecordStore = indexName.startsWith("collection");
+            info.append("index", indexName);
+            info.appendNumber("requestingTxnid", requestingTxnid);
+            info.appendNumber("blockingTxnid", blockingTxnid);
+            BSONArrayBuilder bounds(info.subarrayStart("bounds"));
+            prettyBounds(db, leftKey, rightKey, bounds, isRecordStore);
+            bounds.doneFast();
+            LOG(1) << "TokuFT: lock not granted, details: " << info.done();
+
+            if (logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(2))) {
+                db->dbenv->iterate_live_transactions(db->dbenv, iterateTransactionsCallback, NULL);
+                db->dbenv->iterate_pending_lock_requests(db->dbenv, pendingLockRequestsCallback, NULL);
+            }
+        }
+
     }
 
     TokuFTEngine::TokuFTEngine(const std::string& path)
@@ -103,6 +211,7 @@ namespace mongo {
                 .set_fs_redzone(engineOptions.fsRedzone)
                 .change_fsync_log_period(engineOptions.journalCommitInterval)
                 .set_lock_wait_time_msec(engineOptions.lockTimeout)
+                .set_lock_timeout_callback(lockNotGrantedCallback)
                 .set_compress_buffers_before_eviction(engineOptions.compressBuffersBeforeEviction)
                 .set_cachetable_bucket_mutexes(engineOptions.numCachetableBucketMutexes);
 
