@@ -32,7 +32,7 @@ if has_option("tokuft"):
             '$BUILD_DIR/mongo/db/index/index_descriptor',
             '$BUILD_DIR/mongo/db/storage/bson_collection_catalog_entry',
             '$BUILD_DIR/mongo/db/storage/index_entry_comparison',
-            '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_engine_impl_core',
+            '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_engine_impl',
             '$BUILD_DIR/mongo/foundation',
             '$BUILD_DIR/mongo/processinfo',
             ],
@@ -66,7 +66,6 @@ if has_option("tokuft"):
                ],
        LIBDEPS=[
             'storage_tokuft_base',
-            '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
             ]
        )
 
@@ -78,7 +77,6 @@ if has_option("tokuft"):
             'storage_tokuft_base',
             'storage_tokuft_engine_test_lib',
             '$BUILD_DIR/mongo/db/storage/sorted_data_interface_test_harness',
-            '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
             ]
        )
 
@@ -90,7 +88,6 @@ if has_option("tokuft"):
             'storage_tokuft_base',
             'storage_tokuft_engine_test_lib',
             '$BUILD_DIR/mongo/db/storage/record_store_test_harness',
-            '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
             ]
        )
 
@@ -102,7 +99,6 @@ if has_option("tokuft"):
             'storage_tokuft_engine_test_lib',
             'storage_tokuft_base',
             '$BUILD_DIR/mongo/db/storage/kv/kv_engine_test_harness',
-            '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
             ]
        )
 

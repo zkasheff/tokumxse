@@ -23,7 +23,7 @@ env.Library(
         ],
     LIBDEPS= [
         'kv_heap_dictionary',
-        '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_engine_impl_core',
+        '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_engine_impl',
         ]
     )
 
@@ -46,7 +46,6 @@ env.CppUnitTest(
         ],
     LIBDEPS=[
         'storage_kv_heap_base',
-        '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
         '$BUILD_DIR/mongo/db/storage/sorted_data_interface_test_harness',
         ]
     )
@@ -58,7 +57,6 @@ env.CppUnitTest(
         ],
     LIBDEPS=[
         'storage_kv_heap_base',
-        '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
         '$BUILD_DIR/mongo/db/storage/record_store_test_harness',
         ]
     )
@@ -70,7 +68,6 @@ env.CppUnitTest(
         ],
     LIBDEPS=[
         'storage_kv_heap_base',
-        '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_size_storer_shutdown_mock',
         '$BUILD_DIR/mongo/db/storage/kv/kv_engine_test_harness',
         ]
     )

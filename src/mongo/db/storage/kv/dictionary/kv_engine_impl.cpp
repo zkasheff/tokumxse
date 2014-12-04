@@ -31,7 +31,7 @@
 #include <boost/thread/mutex.hpp>
 
 #include "mongo/db/index/index_descriptor.h"
-#include "mongo/db/operation_context_impl.h"
+#include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
@@ -135,7 +135,8 @@ namespace mongo {
 
     void KVEngineImpl::cleanShutdown() {
         if (_sizeStorer) {
-            _sizeStorer->saveOnShutdown();
+            OperationContextNoop opCtx(newRecoveryUnit());
+            _sizeStorer->storeIntoDict(&opCtx);
             _sizeStorer.reset();
         }
         cleanShutdownImpl();
