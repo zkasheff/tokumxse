@@ -219,7 +219,7 @@ namespace mongo {
             builder.set_lock_wait_time_msec(engineOptions.locktreeMaxMemory);
         }
 
-        log() << "TokuFT: opening environment at " << path << std::endl;
+        LOG(1) << "TokuFT: opening environment at " << path;
         _env = builder
                .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
                .set_update(&ftcxx::wrapped_updater<tokuft_update>)
@@ -235,7 +235,7 @@ namespace mongo {
     void TokuFTEngine::cleanShutdownImpl(OperationContext *opCtx) {
         invariant(_env.env() != NULL);
 
-        log() << "TokuFT: shutdown" << std::endl;
+        LOG(1) << "TokuFT: shutdown";
 
         _metadataDict.reset();
         _env.close();
