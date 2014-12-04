@@ -30,15 +30,108 @@
 
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/catalog/database_holder.h"
+#include "mongo/db/client.h"
 #include "mongo/db/concurrency/d_concurrency.h"
-#include "mongo/db/operation_context_impl.h"
+#include "mongo/db/concurrency/lock_state.h"
+#include "mongo/db/curop.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/db/storage/kv/kv_close_all_databases.h"
+#include "mongo/db/storage/recovery_unit_noop.h"
 
 namespace mongo {
 
+    /**
+     * Because we don't get an OperationContext in the shutdown path anymore, we have to convince
+     * DatabaseHolder::closeAllDatabases that we do have one and it has a global lock.  Since we're
+     * in shutdown, we know this thread does have the lock, but it isn't associated with any
+     * OperationContext.  So here are a fake Locker and OperationContext that pretend they do have
+     * the lock and don't do much else.
+     */
+    class LockerImplShutdown : public DefaultLockerImpl {
+    public:
+        LockerImplShutdown() : DefaultLockerImpl(0) {}
+        virtual ~LockerImplShutdown() {}
+        virtual bool isW() const { return true; }
+        virtual bool isR() const { return true; }
+        virtual bool hasAnyReadLock() const { return true; }
+
+        virtual bool isLocked() const { return true; }
+        virtual bool isWriteLocked() const { return true; }
+        virtual bool isWriteLocked(const StringData& ns) const { return true; }
+
+        virtual void assertWriteLocked(const StringData& ns) const {}
+    };
+
+    class OperationContextShutdown : public OperationContext {
+    public:
+        OperationContextShutdown() {
+            _recoveryUnit.reset(new RecoveryUnitNoop());
+        }
+
+        virtual ~OperationContextShutdown() { }
+
+        virtual Client* getClient() const {
+            invariant(false);
+            return NULL;
+        }
+
+        virtual CurOp* getCurOp() const {
+            invariant(false);
+            return NULL;
+        }
+
+        virtual RecoveryUnit* recoveryUnit() const {
+            return _recoveryUnit.get();
+        }
+
+        virtual RecoveryUnit* releaseRecoveryUnit() {
+            return _recoveryUnit.release();
+        }
+
+        virtual void setRecoveryUnit(RecoveryUnit* unit) {
+            _recoveryUnit.reset(unit);
+        }
+
+        virtual Locker* lockState() const {
+            static LockerImplShutdown lk;
+            return &lk;
+        }
+
+        virtual ProgressMeter* setMessage(const char * msg,
+                                          const std::string &name,
+                                          unsigned long long progressMeterTotal,
+                                          int secondsBetween) {
+            return &_pm;
+        }
+
+        virtual void checkForInterrupt() const { }
+        virtual Status checkForInterruptNoAssert() const {
+            return Status::OK();
+        }
+
+        virtual bool isPrimaryFor( const StringData& ns ) {
+            return true;
+        }
+
+        virtual bool isGod() const {
+            return false;
+        }
+
+        virtual string getNS() const {
+            return string();
+        };
+
+        virtual unsigned int getOpID() const {
+            return 0;
+        }
+
+    private:
+        std::auto_ptr<RecoveryUnit> _recoveryUnit;
+        ProgressMeter _pm;
+    };
+
     void closeAllDatabasesWrapper() {
-        OperationContextImpl txn;
-        Lock::GlobalWrite lk(txn.lockState());
+        OperationContextShutdown txn;
         BSONObjBuilder closeResult;
         dbHolder().closeAll(&txn, closeResult, true);
     }
