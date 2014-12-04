@@ -28,10 +28,10 @@
  *    it in the license file.
  */
 
-#include "mongo/db/operation_context.h"
+#pragma once
 
 namespace mongo {
 
-    void closeAllDatabasesWrapper(OperationContext *txn);
+    void closeAllDatabasesWrapper();
 
 }

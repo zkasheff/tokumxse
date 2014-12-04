@@ -126,6 +126,22 @@ namespace mongo {
         return Status::OK();
     }
 
+    Status TokuFTDictionaryOptions::validateOptions(const BSONObj &options) {
+        BSONForEach(elem, options) {
+            StringData fn = elem.fieldNameStringData();
+            if (fn != "pageSize" &&
+                fn != "readPageSize" &&
+                fn != "compression" &&
+                fn != "fanout") {
+                StringBuilder sb;
+                sb << "TokuFT: invalid dictionary options field \"" << fn << "\" in options " << options;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
+            // TODO: validate types and ranges
+        }
+        return Status::OK();
+    }
+
     void TokuFTDictionaryOptions::setOptions(const CollectionOptions& options) {
         if (options.storageEngine.hasField("pageSize")) {
             pageSize = options.storageEngine["pageSize"].numberLong();

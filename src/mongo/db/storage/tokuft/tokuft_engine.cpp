@@ -232,7 +232,7 @@ namespace mongo {
 
     TokuFTEngine::~TokuFTEngine() {}
 
-    void TokuFTEngine::cleanShutdownImpl(OperationContext *opCtx) {
+    void TokuFTEngine::cleanShutdownImpl() {
         invariant(_env.env() != NULL);
 
         LOG(1) << "TokuFT: shutdown";

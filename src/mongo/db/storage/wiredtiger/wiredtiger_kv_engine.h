@@ -101,7 +101,7 @@ namespace mongo {
 
         std::vector<std::string> getAllIdents( OperationContext* opCtx ) const;
 
-        virtual void cleanShutdown(OperationContext* txn);
+        virtual void cleanShutdown();
 
         // wiredtiger specific
         // Calls WT_CONNECTION::reconfigure on the underlying WT_CONNECTION
@@ -112,13 +112,13 @@ namespace mongo {
         void dropAllQueued();
         bool haveDropsQueued() const;
 
-        int currentEpoch() const { return _epoch.loadRelaxed(); }
+        int currentEpoch() const { return _epoch; }
 
         void syncSizeInfo(bool sync) const;
 
-        void syncSizeInfoOccasionally() const;
-
     private:
+
+        void _checkIdentPath( const StringData& ident );
 
         string _uri( const StringData& ident ) const;
         bool _drop( const StringData& ident );
@@ -126,6 +126,7 @@ namespace mongo {
         WT_CONNECTION* _conn;
         WT_EVENT_HANDLER _eventHandler;
         boost::scoped_ptr<WiredTigerSessionCache> _sessionCache;
+        std::string _path;
         bool _durable;
 
         string _rsOptions;
@@ -134,7 +135,7 @@ namespace mongo {
         std::set<std::string> _identToDrop;
         mutable boost::mutex _identToDropMutex;
 
-        AtomicInt32 _epoch; // this is how we keep track of if a session is too old
+        int _epoch; // this is how we keep track of if a session is too old
 
         scoped_ptr<WiredTigerSizeStorer> _sizeStorer;
         string _sizeStorerUri;

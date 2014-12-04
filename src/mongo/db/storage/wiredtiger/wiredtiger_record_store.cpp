@@ -153,6 +153,8 @@ namespace {
             // force file for oplog
             ss << "type=file,";
             ss << "app_metadata=(oplogKeyExtractionVersion=1),";
+            // Tune down to 10m.  See SERVER-16247
+            ss << "memory_page_max=10m,";
         }
         else {
             // Force this to be empty since users shouldn't be allowed to change it.
@@ -344,6 +346,7 @@ namespace {
 
     void WiredTigerRecordStore::deleteRecord( OperationContext* txn, const RecordId& loc ) {
         WiredTigerCursor cursor( _uri, _instanceId, txn );
+        cursor.assertInActiveTxn();
         WT_CURSOR *c = cursor.get();
         c->set_key(c, _makeKey(loc));
         int ret = c->search(c);
@@ -496,6 +499,7 @@ namespace {
         }
 
         WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        curwrap.assertInActiveTxn();
         WT_CURSOR *c = curwrap.get();
         invariant( c );
 
@@ -551,6 +555,7 @@ namespace {
                                                         bool enforceQuota,
                                                         UpdateMoveNotifier* notifier ) {
         WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        curwrap.assertInActiveTxn();
         WT_CURSOR *c = curwrap.get();
         invariant( c );
         c->set_key(c, _makeKey(loc));
@@ -599,6 +604,7 @@ namespace {
         WiredTigerItem value(data);
 
         WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        curwrap.assertInActiveTxn();
         WT_CURSOR *c = curwrap.get();
         c->set_key(c, _makeKey(loc));
         c->set_value(c, value.Get());

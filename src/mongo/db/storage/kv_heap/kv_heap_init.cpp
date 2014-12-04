@@ -29,7 +29,9 @@
  *    it in the license file.
  */
 
+#include "mongo/base/error_codes.h"
 #include "mongo/base/init.h"
+#include "mongo/base/status.h"
 #include "mongo/db/global_environment_experiment.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/kv_heap/kv_heap_engine.h"
@@ -57,6 +59,18 @@ namespace mongo {
             }
             virtual StringData getCanonicalName() const {
                 return "kv_heap";
+            }
+            virtual Status validateCollectionStorageOptions(const BSONObj& options) const {
+                if (!options.isEmpty()) {
+                    return Status(ErrorCodes::BadValue, "no options allowed for kv_heap engine");
+                }
+                return Status::OK();
+            }
+            virtual Status validateIndexStorageOptions(const BSONObj& options) const {
+                if (!options.isEmpty()) {
+                    return Status(ErrorCodes::BadValue, "no options allowed for kv_heap engine");
+                }
+                return Status::OK();
             }
         };
 

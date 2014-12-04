@@ -30,13 +30,17 @@
 
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/catalog/database_holder.h"
+#include "mongo/db/concurrency/d_concurrency.h"
+#include "mongo/db/operation_context_impl.h"
 #include "mongo/db/storage/kv/kv_close_all_databases.h"
 
 namespace mongo {
 
-    void closeAllDatabasesWrapper(OperationContext *txn) {
+    void closeAllDatabasesWrapper() {
+        OperationContextImpl txn;
+        Lock::GlobalWrite lk(txn.lockState());
         BSONObjBuilder closeResult;
-        dbHolder().closeAll(txn, closeResult, true);
+        dbHolder().closeAll(&txn, closeResult, true);
     }
 
 }

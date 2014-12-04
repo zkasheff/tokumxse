@@ -62,8 +62,7 @@ namespace mongo {
     private:
         void _doCleanShutdown() {
             if (_engine) {
-                scoped_ptr<OperationContext> opCtx(new OperationContextNoop(_engine->newRecoveryUnit()));
-                _engine->cleanShutdown(opCtx.get());
+                _engine->cleanShutdown();
                 _engine.reset();
             }
         }

@@ -66,8 +66,10 @@ namespace mongo {
         KVDatabaseCatalogEntry* const _entry;
     };
 
-    KVStorageEngine::KVStorageEngine( KVEngine* engine )
-        : _engine( engine )
+    KVStorageEngine::KVStorageEngine( KVEngine* engine,
+                                      const KVStorageEngineOptions& options )
+        : _options( options )
+        , _engine( engine )
         , _supportsDocLocking(_engine->supportsDocLocking()) {
 
         OperationContextNoop opCtx( _engine->newRecoveryUnit() );
@@ -89,7 +91,10 @@ namespace mongo {
                                                                 catalogInfo,
                                                                 catalogInfo,
                                                                 CollectionOptions() ) );
-            _catalog.reset( new KVCatalog( _catalogRecordStore.get(), _supportsDocLocking ) );
+            _catalog.reset( new KVCatalog( _catalogRecordStore.get(),
+                                           _supportsDocLocking,
+                                           _options.directoryPerDB,
+                                           _options.directoryForIndexes) );
             _catalog->init( &opCtx );
 
             std::vector<std::string> collections;
@@ -147,8 +152,8 @@ namespace mongo {
 
     }
 
-    void KVStorageEngine::cleanShutdown(OperationContext* txn) {
-        closeAllDatabasesWrapper(txn);
+    void KVStorageEngine::cleanShutdown() {
+        closeAllDatabasesWrapper();
 
         for ( DBMap::const_iterator it = _dbs.begin(); it != _dbs.end(); ++it ) {
             delete it->second;
@@ -158,7 +163,7 @@ namespace mongo {
         _catalog.reset( NULL );
         _catalogRecordStore.reset( NULL );
 
-        _engine->cleanShutdown(txn);
+        _engine->cleanShutdown();
         // intentionally not deleting _engine
     }
 

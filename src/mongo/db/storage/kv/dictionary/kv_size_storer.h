@@ -40,6 +40,7 @@
 
 namespace mongo {
 
+    class KVDictionary;
     class KVRecordStore;
     class RecoveryUnit;
 
@@ -61,6 +62,8 @@ namespace mongo {
 
         void loadFromDict(OperationContext *opCtx);
         void storeIntoDict(OperationContext *opCtx);
+
+        void saveOnShutdown();
 
     private:
         void _checkMagic() const;

@@ -95,7 +95,8 @@ namespace mongo {
     WiredTigerKVEngine::WiredTigerKVEngine( const std::string& path,
                                             const std::string& extraOpenOptions,
                                             bool durable )
-        : _durable( durable ),
+        : _path( path ),
+          _durable( durable ),
           _epoch( 0 ),
           _sizeStorerSyncTracker( 100000, 60 * 1000 ) {
 
@@ -165,7 +166,7 @@ namespace mongo {
 
     WiredTigerKVEngine::~WiredTigerKVEngine() {
         if (_conn) {
-            cleanShutdown(NULL); // our impl doesn't use the OperationContext
+            cleanShutdown();
         }
 
         _sizeStorer.reset( NULL );
@@ -174,7 +175,7 @@ namespace mongo {
 
     }
 
-    void WiredTigerKVEngine::cleanShutdown(OperationContext* txn) {
+    void WiredTigerKVEngine::cleanShutdown() {
         log() << "WiredTigerKVEngine shutting down";
         syncSizeInfo(true);
         if (_conn) {
@@ -235,7 +236,7 @@ namespace mongo {
             _sizeStorer->storeInto( &session, _sizeStorerUri );
             invariantWTOK( s->commit_transaction( s, NULL ) );
         }
-        catch ( const WriteConflictException& de ) {
+        catch (const WriteConflictException&) {
             // ignore, it means someone else is doing it
         }
     }
@@ -256,9 +257,11 @@ namespace mongo {
                                                   const StringData& ns,
                                                   const StringData& ident,
                                                   const CollectionOptions& options ) {
+        _checkIdentPath( ident );
         WiredTigerSession session( _conn, -1 );
 
-        StatusWith<std::string> result = WiredTigerRecordStore::generateCreateString(ns, options, _rsOptions);
+        StatusWith<std::string> result =
+            WiredTigerRecordStore::generateCreateString(ns, options, _rsOptions);
         if (!result.isOK()) {
             return result.getStatus();
         }
@@ -295,7 +298,13 @@ namespace mongo {
     Status WiredTigerKVEngine::createSortedDataInterface( OperationContext* opCtx,
                                                           const StringData& ident,
                                                           const IndexDescriptor* desc ) {
-        return wtRCToStatus( WiredTigerIndex::Create( opCtx, _uri( ident ), _indexOptions, desc ) );
+        _checkIdentPath( ident );
+        StatusWith<std::string> result =
+            WiredTigerIndex::generateCreateString(_indexOptions, *desc);
+        if (!result.isOK()) {
+            return result.getStatus();
+        }
+        return wtRCToStatus(WiredTigerIndex::Create(opCtx, _uri(ident), result.getValue()));
     }
 
     SortedDataInterface* WiredTigerKVEngine::getSortedDataInterface( OperationContext* opCtx,
@@ -330,7 +339,7 @@ namespace mongo {
             {
                 boost::mutex::scoped_lock lk( _identToDropMutex );
                 _identToDrop.insert( uri );
-                _epoch.fetchAndAdd(1);
+                _epoch++;
             }
             _sessionCache->closeAll();
             return false;
@@ -340,14 +349,11 @@ namespace mongo {
         return false;
     }
 
-    void WiredTigerKVEngine::syncSizeInfoOccasionally() const {
+    bool WiredTigerKVEngine::haveDropsQueued() const {
         if ( _sizeStorerSyncTracker.intervalHasElapsed() ) {
             _sizeStorerSyncTracker.resetLastTime();
             syncSizeInfo(false);
         }
-    }
-
-    bool WiredTigerKVEngine::haveDropsQueued() const {
         boost::mutex::scoped_lock lk( _identToDropMutex );
         return !_identToDrop.empty();
     }
@@ -424,5 +430,28 @@ namespace mongo {
 
     int WiredTigerKVEngine::reconfigure(const char* str) {
         return _conn->reconfigure(_conn, str);
+    }
+
+    void WiredTigerKVEngine::_checkIdentPath( const StringData& ident ) {
+        size_t start = 0;
+        size_t idx;
+        while ( ( idx = ident.find( '/', start ) ) != string::npos ) {
+            StringData dir = ident.substr( 0, idx );
+            log() << "need to created: " << dir;
+
+            boost::filesystem::path subdir = _path;
+            subdir /= dir.toString();
+            if ( !boost::filesystem::exists( subdir ) ) {
+                try {
+                    boost::filesystem::create_directory( subdir );
+                }
+                catch( std::exception& e) {
+                    log() << "error creating path " << subdir.string() << ' ' << e.what();
+                    throw;
+                }
+            }
+
+            start = idx + 1;
+        }
     }
 }

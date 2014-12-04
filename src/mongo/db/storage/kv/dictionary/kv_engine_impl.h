@@ -96,13 +96,7 @@ namespace mongo {
                            const StringData& ident,
                            const RecordStore* originalRecordStore ) const;
 
-        void cleanShutdown(OperationContext *opCtx) {
-            if (_sizeStorer) {
-                _sizeStorer->storeIntoDict(opCtx);
-                _sizeStorer.reset();
-            }
-            cleanShutdownImpl(opCtx);
-        }
+        void cleanShutdown();
 
     protected:
         // Create a KVDictionary (same rules as createRecordStore / createSortedDataInterface)
@@ -141,9 +135,7 @@ namespace mongo {
 
         virtual KVSizeStorer *getSizeStorer(OperationContext *opCtx);
 
-        virtual void cleanShutdownImpl(OperationContext *opCtx) {
-            // override this
-        }
+        virtual void cleanShutdownImpl() = 0;
     };
 
 }

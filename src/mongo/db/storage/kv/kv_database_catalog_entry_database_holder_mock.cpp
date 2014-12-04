@@ -33,7 +33,7 @@
 namespace mongo {
 
     // Used to satisfy link dependencies in unit test.
-    void closeAllDatabasesWrapper(OperationContext *txn) {
+    void closeAllDatabasesWrapper() {
     }
 
 }
