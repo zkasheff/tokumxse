@@ -50,10 +50,10 @@ namespace mongo {
 
     class BSONElement;
     class BSONObjBuilder;
-    class CollectionOptions;
     class RecordId;
     class IndexDescriptor;
     class OperationContext;
+    class TokuFTDictionaryOptions;
 
     inline Slice ftslice2slice(const ftcxx::Slice &in) {
         return Slice(in.data(), in.size());
@@ -68,7 +68,7 @@ namespace mongo {
     class TokuFTDictionary : public KVDictionary {
     public:
         TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
-                         const KVDictionary::Comparator &cmp);
+                         const KVDictionary::Comparator &cmp, const TokuFTDictionaryOptions& options);
 
         class Comparator : public KVDictionary::Comparator {
         public:

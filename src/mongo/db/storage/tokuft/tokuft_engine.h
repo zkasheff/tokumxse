@@ -36,6 +36,8 @@
 
 namespace mongo {
 
+    class TokuFTDictionaryOptions;
+
     class TokuFTEngine : public KVEngineImpl {
         MONGO_DISALLOW_COPYING(TokuFTEngine);
     public:
@@ -45,14 +47,18 @@ namespace mongo {
 
         virtual RecoveryUnit* newRecoveryUnit();
 
-        virtual Status createKVDictionary( OperationContext* opCtx,
-                                            const StringData& ident,
-                                            const KVDictionary::Comparator &cmp );
+        virtual Status createKVDictionary(OperationContext* opCtx,
+                                          const StringData& ident,
+                                          const KVDictionary::Comparator &cmp,
+                                          const BSONObj& options,
+                                          bool isRecordStore);
 
-        virtual KVDictionary* getKVDictionary( OperationContext* opCtx,
-                                                const StringData& ident,
-                                                const KVDictionary::Comparator &cmp,
-                                                bool mayCreate = false );
+        virtual KVDictionary* getKVDictionary(OperationContext* opCtx,
+                                              const StringData& ident,
+                                              const KVDictionary::Comparator &cmp,
+                                              const BSONObj& options,
+                                              bool isRecordStore,
+                                              bool mayCreate = false);
 
         virtual Status dropKVDictionary( OperationContext* opCtx,
                                           const StringData& ident );
@@ -93,6 +99,8 @@ namespace mongo {
         ftcxx::DBEnv& env() { return _env; }
 
     private:
+        static TokuFTDictionaryOptions _createOptions(const BSONObj& options, bool isRecordStore);
+
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;
     };

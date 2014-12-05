@@ -64,7 +64,8 @@ namespace mongo {
                                             const StringData& ident,
                                             const CollectionOptions& options ) {
         // Creating a record store is as simple as creating one with the given `ident'
-        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp());
+        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
+                                  options.storageEngine, true);
     }
 
     /**
@@ -76,7 +77,8 @@ namespace mongo {
                                                const StringData& ns,
                                                const StringData& ident,
                                                const CollectionOptions& options ) {
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp()));
+        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
+                                                  options.storageEngine, true));
         auto_ptr<KVRecordStore> rs;
         KVSizeStorer *sizeStorer = (persistDictionaryStats()
                                     ? getSizeStorer(opCtx)
@@ -104,8 +106,10 @@ namespace mongo {
         //
         // Assume the default ordering if no desc is passed (for tests)
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
+        const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
         IndexEntryComparison cmp(Ordering::make(keyPattern));
-        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp));
+        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp),
+                                  options, false);
 
     }
 
@@ -114,8 +118,10 @@ namespace mongo {
                                                                const IndexDescriptor* desc ) {
         // Assume the default ordering if no desc is passed (for tests)
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
+        const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
         IndexEntryComparison cmp(Ordering::make(keyPattern));
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp)));
+        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp),
+                                                  options, false));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
     }
 

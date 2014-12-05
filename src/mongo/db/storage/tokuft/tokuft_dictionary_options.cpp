@@ -126,34 +126,104 @@ namespace mongo {
         return Status::OK();
     }
 
-    Status TokuFTDictionaryOptions::validateOptions(const BSONObj &options) {
-        BSONForEach(elem, options) {
-            StringData fn = elem.fieldNameStringData();
-            if (fn != "pageSize" &&
-                fn != "readPageSize" &&
-                fn != "compression" &&
-                fn != "fanout") {
+    BSONObj TokuFTDictionaryOptions::toBSON() const {
+        BSONObjBuilder b;
+        b.appendNumber("pageSize", static_cast<long long>(pageSize));
+        b.appendNumber("readPageSize", static_cast<long long>(readPageSize));
+        b.append("compression", compression);
+        b.appendNumber("fanout", fanout);
+        return b.obj();
+    }
+
+    Status TokuFTDictionaryOptions::validateOptions(const BSONObj& options) {
+        std::set<std::string> found;
+        BSONForEach(elem, options.getObjectField("tokuft")) {
+            std::string name(elem.fieldName());
+            if (found.find(name) != found.end()) {
                 StringBuilder sb;
-                sb << "TokuFT: invalid dictionary options field \"" << fn << "\" in options " << options;
+                sb << "TokuFT: Duplicated dictionary options field \"" << name << "\" in " << options;
                 return Status(ErrorCodes::BadValue, sb.str());
             }
-            // TODO: validate types and ranges
+            found.insert(name);
+            if (name == "pageSize" || name == "readPageSize" || name == "fanout") {
+                if (!elem.isNumber()) {
+                    StringBuilder sb;
+                    sb << "TokuFT: Expected number type for \"" << name << "\" in dictionary options "
+                       << options;
+                    return Status(ErrorCodes::BadValue, sb.str());
+                }
+                if (elem.type() == NumberDouble &&
+                    (elem.numberDouble() - elem.numberLong()) > 0) {
+                    StringBuilder sb;
+                    sb << "TokuFT: Dictionary options field \"" << name << "\" must be a whole number in options "
+                       << options;
+                    return Status(ErrorCodes::BadValue, sb.str());
+                }
+                long long val = elem.numberLong();
+                if (val <= 0) {
+                    StringBuilder sb;
+                    sb << "TokuFT: Dictionary options field \"" << name << "\" must be positive in options "
+                       << options;
+                    return Status(ErrorCodes::BadValue, sb.str());
+                }
+            } else if (name == "compression") {
+                if (elem.type() != mongo::String) {
+                    StringBuilder sb;
+                    sb << "TokuFT: \"compression\" option must be a string in options "
+                       << options;
+                    return Status(ErrorCodes::BadValue, sb.str());
+                }
+                StringData val = elem.valueStringData();
+                if (val != "zlib" &&
+                    val != "quicklz" &&
+                    val != "lzma" &&
+                    val != "none") {
+                    StringBuilder sb;
+                    sb << "TokuFT: \"compression\" must be one of \"zlib\", \"quicklz\", \"lzma\", or \"none\", in options "
+                       << options;
+                    return Status(ErrorCodes::BadValue, sb.str());
+                }
+            } else {
+                StringBuilder sb;
+                sb << "TokuFT: Dictionary options contains unknown field \"" << name << "\" in options "
+                   << options;
+                return Status(ErrorCodes::BadValue, sb.str());
+            }
         }
         return Status::OK();
     }
 
-    void TokuFTDictionaryOptions::setOptions(const CollectionOptions& options) {
-        if (options.storageEngine.hasField("pageSize")) {
-            pageSize = options.storageEngine["pageSize"].numberLong();
+    TokuFTDictionaryOptions TokuFTDictionaryOptions::mergeOptions(const BSONObj& options) const {
+        BSONObj tokuftOptions = options.getObjectField("tokuft");
+        TokuFTDictionaryOptions merged(*this);
+        if (tokuftOptions.hasField("pageSize")) {
+            merged.pageSize = tokuftOptions["pageSize"].numberLong();
         }
-        if (options.storageEngine.hasField("readPageSize")) {
-            readPageSize = options.storageEngine["readPageSize"].numberLong();
+        if (tokuftOptions.hasField("readPageSize")) {
+            merged.readPageSize = tokuftOptions["readPageSize"].numberLong();
         }
-        if (options.storageEngine.hasField("compression")) {
-            compression = options.storageEngine["compression"].String();
+        if (tokuftOptions.hasField("compression")) {
+            merged.compression = tokuftOptions["compression"].String();
         }
-        if (options.storageEngine.hasField("fanout")) {
-            fanout = options.storageEngine["fanout"].numberLong();
+        if (tokuftOptions.hasField("fanout")) {
+            merged.fanout = tokuftOptions["fanout"].numberLong();
+        }
+        LOG(1) << "TokuFT: Merged default options " << toBSON() << " with user options " << tokuftOptions << " to get " << merged.toBSON();
+        return merged;
+    }
+
+    TOKU_COMPRESSION_METHOD TokuFTDictionaryOptions::compressionMethod() const {
+        if (compression == "zlib") {
+            return TOKU_ZLIB_WITHOUT_CHECKSUM_METHOD;
+        } else if (compression == "quicklz") {
+            return TOKU_QUICKLZ_METHOD;
+        } else if (compression == "lzma") {
+            return TOKU_LZMA_METHOD;
+        } else if (compression == "none") {
+            return TOKU_NO_COMPRESSION;
+        } else {
+            invariant(false);
         }
     }
+
 }

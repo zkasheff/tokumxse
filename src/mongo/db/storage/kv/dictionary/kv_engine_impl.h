@@ -104,7 +104,9 @@ namespace mongo {
         // param: cmp, the comparator that should be passed to the KVDictionary
         virtual Status createKVDictionary( OperationContext* opCtx,
                                            const StringData& ident,
-                                           const KVDictionary::Comparator &cmp ) = 0;
+                                           const KVDictionary::Comparator &cmp,
+                                           const BSONObj& options,
+                                           bool isRecordStore ) = 0;
 
         // Get a KVDictionary (same rules as getRecordStore / getSortedDataInterface)
         //
@@ -112,6 +114,8 @@ namespace mongo {
         virtual KVDictionary* getKVDictionary( OperationContext* opCtx,
                                                const StringData& ident,
                                                const KVDictionary::Comparator &cmp,
+                                               const BSONObj& options,
+                                               bool isRecordStore,
                                                bool mayCreate = false ) = 0;
 
         // Drop a KVDictionary (same rules as dropRecordStore / dropSortedDataInterface)

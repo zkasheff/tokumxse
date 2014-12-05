@@ -226,7 +226,8 @@ namespace mongo {
                .open(path.c_str(), env_flags, env_mode);
 
         ftcxx::DBTxn txn(_env);
-        _metadataDict.reset(new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp()));
+        _metadataDict.reset(new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp(),
+                                                 tokuftGlobalOptions.collectionOptions));
         txn.commit();
     }
 
@@ -251,23 +252,33 @@ namespace mongo {
         return new TokuFTRecoveryUnit(_env);
     }
 
-    Status TokuFTEngine::createKVDictionary( OperationContext* opCtx,
-                                              const StringData& ident,
-                                              const KVDictionary::Comparator &cmp ) {
+    TokuFTDictionaryOptions TokuFTEngine::_createOptions(const BSONObj& options, bool isRecordStore) {
+        return (isRecordStore
+                ? tokuftGlobalOptions.collectionOptions
+                : tokuftGlobalOptions.indexOptions).mergeOptions(options);
+    }
+
+    Status TokuFTEngine::createKVDictionary(OperationContext* opCtx,
+                                            const StringData& ident,
+                                            const KVDictionary::Comparator &cmp,
+                                            const BSONObj& options,
+                                            bool isRecordStore) {
         WriteUnitOfWork wuow(opCtx);
-        TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, cmp);
+        TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, cmp, _createOptions(options, isRecordStore));
         invariant(dict.db().db() != NULL);
         wuow.commit();
 
         return Status::OK();
     }
 
-    KVDictionary* TokuFTEngine::getKVDictionary( OperationContext* opCtx,
-                                                  const StringData& ident,
-                                                  const KVDictionary::Comparator &cmp,
-                                                  bool mayCreate ) {
+    KVDictionary* TokuFTEngine::getKVDictionary(OperationContext* opCtx,
+                                                const StringData& ident,
+                                                const KVDictionary::Comparator &cmp,
+                                                const BSONObj& options,
+                                                bool isRecordStore,
+                                                bool mayCreate) {
         // TODO: mayCreate
-        return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, cmp);
+        return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, cmp, _createOptions(options, isRecordStore));
     }
 
     Status TokuFTEngine::dropKVDictionary( OperationContext* opCtx,

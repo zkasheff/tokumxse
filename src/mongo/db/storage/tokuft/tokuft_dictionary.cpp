@@ -35,6 +35,7 @@
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
+#include "mongo/db/storage/tokuft/tokuft_dictionary_options.h"
 #include "mongo/db/storage/tokuft/tokuft_errors.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/mongoutils/str.h"
@@ -52,17 +53,17 @@
 namespace mongo {
 
     TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
-                                       const KVDictionary::Comparator &cmp)
+                                       const KVDictionary::Comparator &cmp, const TokuFTDictionaryOptions& options)
         : _db(ftcxx::DBBuilder()
-              // TODO: descriptor, options
-              .set_readpagesize(64 << 10)
-              .set_pagesize(4 << 20)
-              .set_compression_method(TOKU_ZLIB_WITHOUT_CHECKSUM_METHOD)
+              .set_readpagesize(options.readPageSize)
+              .set_pagesize(options.pageSize)
+              .set_compression_method(options.compressionMethod())
+              .set_fanout(options.fanout)
               .set_descriptor(slice2ftslice(cmp.serialize()))
               .open(env, txn, ident.toString().c_str(), NULL,
                     DB_BTREE /* legacy flag */, DB_CREATE, 0644))
     {
-        // TODO: Verify descriptor contents WRT *options, *desc
+        LOG(1) << "TokuFT: Opening dictionary \"" << ident << "\" with options " << options.toBSON();
     }
 
     static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {

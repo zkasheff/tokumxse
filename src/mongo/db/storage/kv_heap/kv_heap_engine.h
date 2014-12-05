@@ -47,14 +47,18 @@ namespace mongo {
 
         RecoveryUnit* newRecoveryUnit();
 
-        Status createKVDictionary( OperationContext* opCtx,
-                                    const StringData& ident,
-                                    const KVDictionary::Comparator &cmp );
+        Status createKVDictionary(OperationContext* opCtx,
+                                  const StringData& ident,
+                                  const KVDictionary::Comparator &cmp,
+                                  const BSONObj& options,
+                                  bool isRecordStore);
 
-        KVDictionary* getKVDictionary( OperationContext* opCtx,
-                                        const StringData& ident,
-                                        const KVDictionary::Comparator &cmp,
-                                        bool mayCreate = false );
+        KVDictionary* getKVDictionary(OperationContext* opCtx,
+                                      const StringData& ident,
+                                      const KVDictionary::Comparator &cmp,
+                                      const BSONObj& options,
+                                      bool isRecordStore,
+                                      bool mayCreate = false);
 
         Status dropKVDictionary( OperationContext* opCtx,
                                   const StringData& ident );

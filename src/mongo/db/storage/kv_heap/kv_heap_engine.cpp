@@ -38,16 +38,20 @@ namespace mongo {
         return new KVHeapRecoveryUnit();
     }
 
-    Status KVHeapEngine::createKVDictionary( OperationContext* opCtx,
-                                              const StringData& ident,
-                                              const KVDictionary::Comparator &cmp ) {
+    Status KVHeapEngine::createKVDictionary(OperationContext* opCtx,
+                                            const StringData& ident,
+                                            const KVDictionary::Comparator &cmp,
+                                            const BSONObj& options,
+                                            bool isRecordStore) {
         return Status::OK();
     }
 
-    KVDictionary* KVHeapEngine::getKVDictionary( OperationContext* opCtx,
-                                                  const StringData& ident,
-                                                  const KVDictionary::Comparator &cmp,
-                                                  bool mayCreate ) {
+    KVDictionary* KVHeapEngine::getKVDictionary(OperationContext* opCtx,
+                                                const StringData& ident,
+                                                const KVDictionary::Comparator &cmp,
+                                                const BSONObj& options,
+                                                bool isRecordStore,
+                                                bool mayCreate) {
         boost::mutex::scoped_lock lk(_mapMutex);
         HeapsMap::const_iterator it = _map.find(ident);
         if (it != _map.end()) {

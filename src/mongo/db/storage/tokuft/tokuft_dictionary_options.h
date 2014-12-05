@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include <db.h>
+
 #include "mongo/base/status.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -52,8 +54,11 @@ namespace mongo {
         bool handlePreValidation(const moe::Environment& params);
         Status store(const moe::Environment& params, const std::vector<std::string>& args);
 
-        static Status validateOptions(const BSONObj &options);
-        void setOptions(const CollectionOptions& options);
+        BSONObj toBSON() const;
+        static Status validateOptions(const BSONObj& options);
+        TokuFTDictionaryOptions mergeOptions(const BSONObj& options) const;
+
+        TOKU_COMPRESSION_METHOD compressionMethod() const;
 
         unsigned long long pageSize;
         unsigned long long readPageSize;
