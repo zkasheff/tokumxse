@@ -174,10 +174,15 @@ namespace mongo {
                 return;
             }
 
-            BSONObjBuilder info;
             StringData indexName(getIndexName(db));
             bool isMetadata = indexName == "tokuft.metadata";
             bool isRecordStore = indexName.startsWith("collection");
+            if (!isMetadata && !isRecordStore && !indexName.startsWith("index")) {
+                LOG(1) << "TokuFT: lock not granted on internal dictionary \"" << indexName << "\", will not attempt to decode.";
+                return;
+            }
+
+            BSONObjBuilder info;
             info.append("index", indexName);
             info.appendNumber("requestingTxnid", requestingTxnid);
             info.appendNumber("blockingTxnid", blockingTxnid);
