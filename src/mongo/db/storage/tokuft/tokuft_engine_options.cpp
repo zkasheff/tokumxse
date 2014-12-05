@@ -142,9 +142,9 @@ namespace mongo {
         }
         if (params.count("storage.tokuft.engineOptions.lockTimeout")) {
             lockTimeout = params["storage.tokuft.engineOptions.lockTimeout"].as<int>();
-            if (lockTimeout < 1 || lockTimeout > 60000) {
+            if (lockTimeout < 0 || lockTimeout > 60000) {
                 StringBuilder sb;
-                sb << "storage.tokuft.engineOptions.lockTimeout must be between 1 and 60000, but attempted to set to: "
+                sb << "storage.tokuft.engineOptions.lockTimeout must be between 0 and 60000, but attempted to set to: "
                    << lockTimeout;
                 return Status(ErrorCodes::BadValue, sb.str());
             }

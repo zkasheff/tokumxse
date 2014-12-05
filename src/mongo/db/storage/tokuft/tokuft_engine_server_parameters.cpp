@@ -193,9 +193,9 @@ namespace mongo {
 
     protected:
         Status check(long long newValue) const {
-            if (newValue < 1 || newValue > 60000) {
+            if (newValue < 0 || newValue > 60000) {
                 StringBuilder sb;
-                sb << "tokuftEngineLockTimeout must be between 1 and 60000, but attempted to set to: "
+                sb << "tokuftEngineLockTimeout must be between 0 and 60000, but attempted to set to: "
                    << newValue;
                 return Status(ErrorCodes::BadValue, sb.str());
             }
