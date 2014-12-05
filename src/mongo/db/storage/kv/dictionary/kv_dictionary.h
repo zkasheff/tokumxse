@@ -163,6 +163,25 @@ namespace mongo {
         virtual const char *name() const = 0;
 
         /**
+         * Storage engines may override this and change supportsDupKeyCheck to return true if they
+         * want to provide their own mechanism.
+         *
+         * The implementation must do a query for anything in the range [lookupLeft, lookupRight].
+         *
+         * If nothing is found, it can return Status::OK().
+         * If something is found, compare its suffix with exactMatchSuffix:
+         *  - If it's identical to exactMatchSuffix, then also return Status::OK().
+         *  - Otherwise, return Status(ErrorCodes::DuplicateKey, ...).
+         */
+        virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const Slice &exactMatchSuffix) {
+            invariant(false);
+            return Status::OK();
+        }
+        virtual bool supportsDupKeyCheck() const {
+            return false;
+        }
+
+        /**
          * Basic dictionary stats.
          */
         class Stats {

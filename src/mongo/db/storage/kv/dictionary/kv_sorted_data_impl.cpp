@@ -31,6 +31,7 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/kv/slice.h"
@@ -89,11 +90,11 @@ namespace mongo {
          * Creates an error code message out of a key
          */
         string dupKeyError(const BSONObj& key) {
-            stringstream ss;
-            ss << "E11000 duplicate key error ";
+            StringBuilder sb;
+            sb << "E11000 duplicate key error ";
             // TODO figure out how to include index name without dangerous casts
-            ss << "dup key: " << key.toString();
-            return ss.str();
+            sb << "dup key: " << key.toString();
+            return sb.str();
         }
 
     }  // namespace
@@ -125,14 +126,29 @@ namespace mongo {
             return Status(ErrorCodes::KeyTooLong, msg);
         }
 
-        if (!dupsAllowed) {
-            Status status = dupKeyCheck(txn, key, loc);
-            if (!status.isOK()) {
-                return status;
+        try {
+            if (!dupsAllowed) {
+                Status status = (_db->supportsDupKeyCheck()
+                                 ? _db->dupKeyCheck(txn,
+                                                    makeString(key, RecordId::min(), false),
+                                                    makeString(key, RecordId::max(), false),
+                                                    Slice::of(loc))
+                                 : dupKeyCheck(txn, key, loc));
+                if (!status.isOK()) {
+                    return status;
+                }
             }
-        }
 
-        _db->insert(txn, makeString(key, loc), Slice());
+            _db->insert(txn, makeString(key, loc), Slice());
+        } catch (WriteConflictException) {
+            if (!dupsAllowed) {
+                // If we see a WriteConflictException on a unique index, according to
+                // https://jira.mongodb.org/browse/SERVER-16337 we should consider it a duplicate
+                // key even if this means reporting false positives.
+                return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
+            }
+            throw;
+        }
 
         return Status::OK();
     }
