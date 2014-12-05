@@ -116,87 +116,117 @@ namespace mongo {
         static int iterateTransactionsCallback(uint64_t txnid, uint64_t clientId,
                                                iterate_row_locks_callback iterateLocks,
                                                void *locksExtra, void *extra) {
-            // We ignore clientId because txnid is sufficient for finding
-            // the associated operation in db.currentOp()
-            BSONObjBuilder status;
-            status.appendNumber("txnid", txnid);
-            BSONArrayBuilder locks(status.subarrayStart("rowLocks"));
-            {
-                DB *db;
-                DBT leftKey, rightKey;
-                while (iterateLocks(&db, &leftKey, &rightKey, locksExtra) == 0) {
-                    if (locks.len() + leftKey.size + rightKey.size > BSONObjMaxUserSize - 1024) {
-                        // We're running out of space, better stop here.
-                        locks.append("too many results to return");
-                        break;
+            try {
+                // We ignore clientId because txnid is sufficient for finding
+                // the associated operation in db.currentOp()
+                BSONObjBuilder status;
+                status.appendNumber("txnid", txnid);
+                BSONArrayBuilder locks(status.subarrayStart("rowLocks"));
+                {
+                    DB *db;
+                    DBT leftKey, rightKey;
+                    while (iterateLocks(&db, &leftKey, &rightKey, locksExtra) == 0) {
+                        if (locks.len() + leftKey.size + rightKey.size > BSONObjMaxUserSize - 1024) {
+                            // We're running out of space, better stop here.
+                            locks.append("too many results to return");
+                            break;
+                        }
+                        BSONObjBuilder rowLock(locks.subobjStart());
+                        StringData indexName(getIndexName(db));
+                        bool isMetadata = indexName == "tokuft.metadata";
+                        bool isRecordStore = indexName.startsWith("collection");
+                        rowLock.append("index", indexName);
+                        BSONArrayBuilder bounds(rowLock.subarrayStart("bounds"));
+                        prettyBounds(db, &leftKey, &rightKey, bounds, isMetadata, isRecordStore);
+                        bounds.doneFast();
+                        rowLock.doneFast();
                     }
-                    BSONObjBuilder rowLock(locks.subobjStart());
-                    StringData indexName(getIndexName(db));
-                    bool isMetadata = indexName == "tokuft.metadata";
-                    bool isRecordStore = indexName.startsWith("collection");
-                    rowLock.append("index", indexName);
-                    BSONArrayBuilder bounds(rowLock.subarrayStart("bounds"));
-                    prettyBounds(db, &leftKey, &rightKey, bounds, isMetadata, isRecordStore);
-                    bounds.doneFast();
-                    rowLock.doneFast();
+                    locks.doneFast();
                 }
-                locks.doneFast();
+                LOG(2) << "TokuFT: live transaction: " << status.done();
+                return 0;
+            } catch (const DBException &e) {
+                warning() << "TokuFT: caught exception " << e.what() << " (code " << e.getCode() << ") in iterate transactions callback.";
+                return -1;
+            } catch (const std::exception &e) {
+                warning() << "TokuFT: caught exception " << e.what() << " in iterate transactions callback.";
+                return -1;
+            } catch (...) {
+                warning() << "TokuFT: caught unknown exception in iterate transactions callback.";
+                return -1;
             }
-            LOG(2) << "TokuFT: live transaction: " << status.done();
-            return 0;
         }
 
         static int pendingLockRequestsCallback(DB *db, uint64_t requestingTxnid,
                                                const DBT *leftKey, const DBT *rightKey,
                                                uint64_t blockingTxnid, uint64_t startTime,
                                                void *extra) {
-            BSONObjBuilder status;
-            StringData indexName(getIndexName(db));
-            bool isMetadata = indexName == "tokuft.metadata";
-            bool isRecordStore = indexName.startsWith("collection");
-            status.append("index", indexName);
-            status.appendNumber("requestingTxnid", requestingTxnid);
-            status.appendNumber("blockingTxnid", blockingTxnid);
-            status.appendDate("started", startTime);
-            {
-                BSONArrayBuilder bounds(status.subarrayStart("bounds"));
-                prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
-                bounds.doneFast();
+            try {
+                BSONObjBuilder status;
+                StringData indexName(getIndexName(db));
+                bool isMetadata = indexName == "tokuft.metadata";
+                bool isRecordStore = indexName.startsWith("collection");
+                status.append("index", indexName);
+                status.appendNumber("requestingTxnid", requestingTxnid);
+                status.appendNumber("blockingTxnid", blockingTxnid);
+                status.appendDate("started", startTime);
+                {
+                    BSONArrayBuilder bounds(status.subarrayStart("bounds"));
+                    prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
+                    bounds.doneFast();
+                }
+                LOG(2) << "TokuFT: pending lock: " << status.done();
+                return 0;
+            } catch (const DBException &e) {
+                warning() << "TokuFT: caught exception " << e.what() << " (code " << e.getCode() << ") in pending lock requests callback.";
+                return -1;
+            } catch (const std::exception &e) {
+                warning() << "TokuFT: caught exception " << e.what() << " in pending lock requests callback.";
+                return -1;
+            } catch (...) {
+                warning() << "TokuFT: caught unknown exception in pending lock requests callback.";
+                return -1;
             }
-            LOG(2) << "TokuFT: pending lock: " << status.done();
-            return 0;
         }
 
         static void lockNotGrantedCallback(DB *db, uint64_t requestingTxnid,
                                            const DBT *leftKey, const DBT *rightKey,
                                            uint64_t blockingTxnid) {
-            if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(1))) {
-                return;
+            try {
+                if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(1))) {
+                    return;
+                }
+
+                StringData indexName(getIndexName(db));
+                bool isMetadata = indexName == "tokuft.metadata";
+                bool isRecordStore = indexName.startsWith("collection");
+                if (!isMetadata && !isRecordStore && !indexName.startsWith("index")) {
+                    LOG(1) << "TokuFT: lock not granted on internal dictionary \"" << indexName << "\", will not attempt to decode.";
+                    return;
+                }
+
+                BSONObjBuilder info;
+                info.append("index", indexName);
+                info.appendNumber("requestingTxnid", requestingTxnid);
+                info.appendNumber("blockingTxnid", blockingTxnid);
+                BSONArrayBuilder bounds(info.subarrayStart("bounds"));
+                prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
+                bounds.doneFast();
+                LOG(1) << "TokuFT: lock not granted, details: " << info.done();
+
+                if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(2))) {
+                    return;
+                }
+
+                db->dbenv->iterate_live_transactions(db->dbenv, iterateTransactionsCallback, NULL);
+                db->dbenv->iterate_pending_lock_requests(db->dbenv, pendingLockRequestsCallback, NULL);
+            } catch (const DBException &e) {
+                warning() << "TokuFT: caught exception " << e.what() << " (code " << e.getCode() << ") in lock not granted callback.";
+            } catch (const std::exception &e) {
+                warning() << "TokuFT: caught exception " << e.what() << " in lock not granted callback.";
+            } catch (...) {
+                warning() << "TokuFT: caught unknown exception in lock not granted callback.";
             }
-
-            StringData indexName(getIndexName(db));
-            bool isMetadata = indexName == "tokuft.metadata";
-            bool isRecordStore = indexName.startsWith("collection");
-            if (!isMetadata && !isRecordStore && !indexName.startsWith("index")) {
-                LOG(1) << "TokuFT: lock not granted on internal dictionary \"" << indexName << "\", will not attempt to decode.";
-                return;
-            }
-
-            BSONObjBuilder info;
-            info.append("index", indexName);
-            info.appendNumber("requestingTxnid", requestingTxnid);
-            info.appendNumber("blockingTxnid", blockingTxnid);
-            BSONArrayBuilder bounds(info.subarrayStart("bounds"));
-            prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
-            bounds.doneFast();
-            LOG(1) << "TokuFT: lock not granted, details: " << info.done();
-
-            if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(2))) {
-                return;
-            }
-
-            db->dbenv->iterate_live_transactions(db->dbenv, iterateTransactionsCallback, NULL);
-            db->dbenv->iterate_pending_lock_requests(db->dbenv, pendingLockRequestsCallback, NULL);
         }
 
     }
