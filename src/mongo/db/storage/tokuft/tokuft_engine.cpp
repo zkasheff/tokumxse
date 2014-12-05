@@ -82,11 +82,13 @@ namespace mongo {
         }
 
         static void prettyBounds(DB *db, const DBT *leftKey, const DBT *rightKey,
-                                 BSONArrayBuilder &bounds, bool isInteger) {
+                                 BSONArrayBuilder &bounds, bool isString, bool isInteger) {
             if (leftKey->data == NULL) {
                 bounds.append("-infinity");
             } else {
-                if (isInteger) {
+                if (isString) {
+                    bounds.append(StringData(static_cast<char *>(leftKey->data), leftKey->size));
+                } else if (isInteger) {
                     BSONObjBuilder b(bounds.subobjStart());
                     b.appendNumber("record_id", Slice(static_cast<char *>(leftKey->data), leftKey->size).as<uint64_t>());
                     b.doneFast();
@@ -98,7 +100,9 @@ namespace mongo {
             if (rightKey->data == NULL) {
                 bounds.append("+infinity");
             } else {
-                if (isInteger) {
+                if (isString) {
+                    bounds.append(StringData(static_cast<char *>(rightKey->data), rightKey->size));
+                } else if (isInteger) {
                     BSONObjBuilder b(bounds.subobjStart());
                     b.appendNumber("record_id", Slice(static_cast<char *>(rightKey->data), rightKey->size).as<uint64_t>());
                     b.doneFast();
@@ -128,10 +132,11 @@ namespace mongo {
                     }
                     BSONObjBuilder rowLock(locks.subobjStart());
                     StringData indexName(getIndexName(db));
+                    bool isMetadata = indexName == "tokuft.metadata";
                     bool isRecordStore = indexName.startsWith("collection");
                     rowLock.append("index", indexName);
                     BSONArrayBuilder bounds(rowLock.subarrayStart("bounds"));
-                    prettyBounds(db, &leftKey, &rightKey, bounds, isRecordStore);
+                    prettyBounds(db, &leftKey, &rightKey, bounds, isMetadata, isRecordStore);
                     bounds.doneFast();
                     rowLock.doneFast();
                 }
@@ -147,6 +152,7 @@ namespace mongo {
                                                void *extra) {
             BSONObjBuilder status;
             StringData indexName(getIndexName(db));
+            bool isMetadata = indexName == "tokuft.metadata";
             bool isRecordStore = indexName.startsWith("collection");
             status.append("index", indexName);
             status.appendNumber("requestingTxnid", requestingTxnid);
@@ -154,7 +160,7 @@ namespace mongo {
             status.appendDate("started", startTime);
             {
                 BSONArrayBuilder bounds(status.subarrayStart("bounds"));
-                prettyBounds(db, leftKey, rightKey, bounds, isRecordStore);
+                prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
                 bounds.doneFast();
             }
             LOG(2) << "TokuFT: pending lock: " << status.done();
@@ -164,21 +170,28 @@ namespace mongo {
         static void lockNotGrantedCallback(DB *db, uint64_t requestingTxnid,
                                            const DBT *leftKey, const DBT *rightKey,
                                            uint64_t blockingTxnid) {
+            if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(1))) {
+                return;
+            }
+
             BSONObjBuilder info;
             StringData indexName(getIndexName(db));
+            bool isMetadata = indexName == "tokuft.metadata";
             bool isRecordStore = indexName.startsWith("collection");
             info.append("index", indexName);
             info.appendNumber("requestingTxnid", requestingTxnid);
             info.appendNumber("blockingTxnid", blockingTxnid);
             BSONArrayBuilder bounds(info.subarrayStart("bounds"));
-            prettyBounds(db, leftKey, rightKey, bounds, isRecordStore);
+            prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
             bounds.doneFast();
             LOG(1) << "TokuFT: lock not granted, details: " << info.done();
 
-            if (logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(2))) {
-                db->dbenv->iterate_live_transactions(db->dbenv, iterateTransactionsCallback, NULL);
-                db->dbenv->iterate_pending_lock_requests(db->dbenv, pendingLockRequestsCallback, NULL);
+            if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(2))) {
+                return;
             }
+
+            db->dbenv->iterate_live_transactions(db->dbenv, iterateTransactionsCallback, NULL);
+            db->dbenv->iterate_pending_lock_requests(db->dbenv, pendingLockRequestsCallback, NULL);
         }
 
     }
