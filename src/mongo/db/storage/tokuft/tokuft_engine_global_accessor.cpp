@@ -29,6 +29,7 @@
  */
 
 #include "mongo/db/global_environment_experiment.h"
+#include "mongo/db/storage_options.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/util/assert_util.h"
@@ -36,6 +37,10 @@
 #include <ftcxx/db_env.hpp>
 
 namespace mongo {
+
+    bool globalStorageEngineIsTokuFT() {
+        return storageGlobalParams.engine == "tokuft";
+    }
 
     ftcxx::DBEnv& tokuftGlobalEnv() {
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();

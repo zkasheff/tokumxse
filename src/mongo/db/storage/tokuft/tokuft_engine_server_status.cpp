@@ -242,6 +242,10 @@ namespace mongo {
         virtual bool includeByDefault() const { return true; }
 
         BSONObj generateSection(OperationContext *opCtx, const BSONElement &configElement) const {
+            if (!globalStorageEngineIsTokuFT()) {
+                return BSONObj();
+            }
+
             int scale = 1;
             if (configElement.isABSONObj()) {
                 BSONObj o = configElement.Obj();

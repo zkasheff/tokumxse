@@ -32,6 +32,8 @@
 
 namespace mongo {
 
+    bool globalStorageEngineIsTokuFT();
+
     ftcxx::DBEnv& tokuftGlobalEnv();
 
 } // namespace mongo
