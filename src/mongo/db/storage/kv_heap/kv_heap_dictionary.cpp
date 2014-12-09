@@ -137,12 +137,15 @@ namespace mongo {
         return Status(ErrorCodes::NoSuchKey, "not found");
     }
 
-    Status KVHeapDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value) {
+    Status KVHeapDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool overwrite) {
         KVHeapRecoveryUnit *ru = KVHeapRecoveryUnit::getKVHeapRecoveryUnit(opCtx);
         SliceMap::const_iterator it = _map.find(key);
         if (it == _map.end()) {
             ru->registerChange(new InsertOperation(this, key));
         } else {
+            if (!overwrite) {
+                return Status(ErrorCodes::DuplicateKey, "duplicate key");
+            }
             ru->registerChange(new InsertOperation(this, it->first, it->second));
         }
         _insertPair(key, value);

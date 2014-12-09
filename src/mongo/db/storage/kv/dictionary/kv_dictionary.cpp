@@ -40,17 +40,18 @@ namespace mongo {
     KVDictionary::Comparator::Comparator(const Slice &serialized)
         : _cmp(serialized.size() == 0
                ? nullIEC
-               : serialized.as<IndexEntryComparison>()),
+               : *reinterpret_cast<const IndexEntryComparison *>(serialized.data())),
            // An empty serialization means 'use memcmp'. See Comparator::serialize().
+          _unique(serialized.size() > 0 && serialized.data()[sizeof _cmp]),
           _useMemcmp(serialized.size() == 0)
     {}
 
     KVDictionary::Comparator KVDictionary::Comparator::useMemcmp() {
-        return Comparator(nullIEC, true);
+        return Comparator(nullIEC, false, true);
     }
 
-    KVDictionary::Comparator KVDictionary::Comparator::useIndexEntryComparison(const IndexEntryComparison &cmp) {
-        return Comparator(cmp, false);
+    KVDictionary::Comparator KVDictionary::Comparator::useIndexEntryComparison(const IndexEntryComparison &cmp, bool unique) {
+        return Comparator(cmp, unique, false);
     }
 
     Slice KVDictionary::Comparator::serialize() const {
@@ -58,8 +59,13 @@ namespace mongo {
             // Empty representation.
             return Slice();
         } else {
+            const Slice justComparison = Slice::of(_cmp);
+            Slice s(1 + justComparison.size());
             // We serialize the bytes that represent the IndexEntryComparison
-            return Slice::of(_cmp);
+            std::copy(justComparison.begin(), justComparison.end(), s.begin());
+            // Plus a unique byte
+            s.mutableData()[justComparison.size()] = _unique;
+            return s;
         }
     }
 
@@ -91,9 +97,15 @@ namespace mongo {
             if (a.size() == 0 || b.size() == 0) {
                 return a.size() == b.size() ? 0 : ((a.size() == 0) ? -1 : 1);
             }
-            const IndexKeyEntry lhs = makeIndexKeyEntry(a);
-            const IndexKeyEntry rhs = makeIndexKeyEntry(b);
-            return _cmp.compare(lhs, rhs);
+            if (_unique) {
+                const BSONObj lhs = BSONObj(a.data());
+                const BSONObj rhs = BSONObj(b.data());
+                return _cmp.compare(IndexKeyEntry(lhs, RecordId()), IndexKeyEntry(rhs, RecordId()));
+            } else {
+                const IndexKeyEntry lhs = makeIndexKeyEntry(a);
+                const IndexKeyEntry rhs = makeIndexKeyEntry(b);
+                return _cmp.compare(lhs, rhs);
+            }
         }
     }
 
@@ -112,7 +124,7 @@ namespace mongo {
             return status;
         }
 
-        return insert(opCtx, key, newValue);
+        return insert(opCtx, key, newValue, true);
     }
 
     Status KVDictionary::update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message) {

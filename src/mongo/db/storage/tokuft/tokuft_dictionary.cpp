@@ -93,43 +93,11 @@ namespace mongo {
         return statusFromTokuFTError(r);
     }
 
-    class DupKeyFilter {
-        ftcxx::Slice _suffix;
-
-    public:
-        DupKeyFilter(const Slice &suffix)
-            : _suffix(slice2ftslice(suffix))
-        {}
-
-        bool operator()(const ftcxx::Slice &key, const ftcxx::Slice &val) const {
-            // We are looking for cases where the RecordId *doesn't* match.  So if they're equal,
-            // return false so we don't consider this key.
-            invariant(key.size() >= _suffix.size());
-            return !std::equal(_suffix.begin(), _suffix.end(), key.end() - _suffix.size());
+    Status TokuFTDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool overwrite) {
+        if (!overwrite) {
+            log() << "doing DB_NOOVERWRITE insert";
         }
-    };
-
-    Status TokuFTDictionary::dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const Slice &exactMatchSuffix) {
-        try {
-            ftcxx::Slice foundKey;
-            ftcxx::Slice foundVal;
-            for (ftcxx::BufferedCursor<TokuFTDictionary::Comparator, DupKeyFilter> cur(
-                     _db.buffered_cursor(_getDBTxn(opCtx), slice2ftslice(lookupLeft), slice2ftslice(lookupRight),
-                                         comparator(), DupKeyFilter(exactMatchSuffix), 0, true, false, true));
-                 cur.ok(); cur.next(foundKey, foundVal)) {
-                // If we found anything, it must have matched the filter, so it's a duplicate.
-                StringBuilder sb;
-                sb << "E11000 duplicate key error dup key: " << BSONObj(lookupLeft.begin());
-                return Status(ErrorCodes::DuplicateKey, sb.str());
-            }
-        } catch (ftcxx::ft_exception &e) {
-            return statusFromTokuFTException(e);
-        }
-        return Status::OK();
-    }
-
-    Status TokuFTDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value) {
-        int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value));
+        int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value), overwrite ? 0 : DB_NOOVERWRITE);
         return statusFromTokuFTError(r);
     }
 

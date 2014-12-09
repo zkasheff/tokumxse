@@ -32,6 +32,7 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include "mongo/db/concurrency/write_conflict_exception.h"
+#include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/kv/slice.h"
@@ -86,6 +87,37 @@ namespace mongo {
             return IndexKeyEntry( key, loc );
         }
 
+        Slice makeKeyString(const BSONObj& key, bool removeFieldNames = true) {
+            const BSONObj finalKey = removeFieldNames ? stripFieldNames(key) : key;
+            Slice s(finalKey.objsize());
+            std::copy(finalKey.objdata(), finalKey.objdata() + finalKey.objsize(), s.begin());
+            return s;
+        }
+
+        Slice makeRecordIdString(const RecordId loc) {
+            return Slice::of(loc);
+        }
+
+        Slice makeRecordIdString(const set<RecordId>& locs) {
+            Slice s(locs.size() * sizeof(RecordId));
+            std::copy(locs.begin(), locs.end(), reinterpret_cast<RecordId *>(s.begin()));
+            return s;
+        }
+
+        BSONObj makeKey(const Slice &slice) {
+            return BSONObj(slice.data());
+        }
+
+        RecordId makeRecordId(const Slice &slice) {
+            return slice.as<RecordId>();
+        }
+
+        set<RecordId> makeRecordIdSet(const Slice &slice) {
+            set<RecordId> locs;
+            std::copy(reinterpret_cast<const RecordId *>(slice.begin()), reinterpret_cast<const RecordId *>(slice.end()), std::inserter(locs, locs.end()));
+            return locs;
+        }
+
         /**
          * Creates an error code message out of a key
          */
@@ -101,8 +133,9 @@ namespace mongo {
 
     KVSortedDataImpl::KVSortedDataImpl( KVDictionary* db,
                                         OperationContext* opCtx,
-                                        const IndexDescriptor* desc) :
-        _db( db ) {
+                                        const IndexDescriptor* desc)
+        : _db(db),
+          _unique(desc ? desc->infoObj()["unique"].trueValue() : false) {
         invariant( _db );
     }
 
@@ -127,19 +160,35 @@ namespace mongo {
         }
 
         try {
-            if (!dupsAllowed) {
-                Status status = (_db->supportsDupKeyCheck()
-                                 ? _db->dupKeyCheck(txn,
-                                                    makeString(key, RecordId::min(), false),
-                                                    makeString(key, RecordId::max(), false),
-                                                    Slice::of(loc))
-                                 : dupKeyCheck(txn, key, loc));
-                if (!status.isOK()) {
-                    return status;
+            if (_unique) {
+                if (dupsAllowed) {
+                    log() << "unique but dups allowed";
+                    Slice val;
+                    Status s = _db->get(txn, makeKeyString(key), val);
+                    if (s.isOK()) {
+                        set<RecordId> locs = makeRecordIdSet(val);
+                        locs.insert(loc);
+                        log() << "found val, appending loc";
+                        return _db->insert(txn, makeKeyString(key), makeRecordIdString(locs));
+                    } else if (s == ErrorCodes::NoSuchKey) {
+                        log() << "didn't find val, inserting";
+                        return _db->insert(txn, makeKeyString(key), makeRecordIdString(loc));
+                    } else {
+                        log() << "error " << s.codeString();
+                        return s;
+                    }
+                } else {
+                    log() << "unique and dups not allowed";
+                    Status s = _db->insert(txn, makeKeyString(key), makeRecordIdString(loc), false);
+                    if (s == ErrorCodes::DuplicateKey) {
+                        log() << "engine said unique insert got dup key";
+                        return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
+                    }
+                    return s;
                 }
+            } else {
+                return _db->insert(txn, makeString(key, loc), Slice());
             }
-
-            _db->insert(txn, makeString(key, loc), Slice());
         } catch (WriteConflictException) {
             if (!dupsAllowed) {
                 // If we see a WriteConflictException on a unique index, according to
@@ -157,7 +206,11 @@ namespace mongo {
                                    const BSONObj& key,
                                    const RecordId& loc,
                                    bool dupsAllowed) {
-        _db->remove(txn, makeString(key, loc));
+        if (_unique) {
+            _db->remove(txn, makeKeyString(key));
+        } else {
+            _db->remove(txn, makeString(key, loc));
+        }
     }
 
     Status KVSortedDataImpl::dupKeyCheck(OperationContext* txn,
@@ -220,6 +273,7 @@ namespace mongo {
         KVDictionary *_db;
         const int _dir;
         OperationContext *_txn;
+        const bool _unique;
 
         mutable boost::scoped_ptr<KVDictionary::Cursor> _cursor;
         BSONObj _savedKey;
@@ -238,15 +292,20 @@ namespace mongo {
         }
 
         bool _locate(const BSONObj &key, const RecordId &loc) {
-            _cursor.reset(_db->getCursor(_txn, makeString(key, loc, false), _dir));
+            if (_unique) {
+                _cursor.reset(_db->getCursor(_txn, makeKeyString(key, false), _dir));
+            } else {
+                _cursor.reset(_db->getCursor(_txn, makeString(key, loc, false), _dir));
+            }
             return !isEOF() && loc == getRecordId() && key == getKey();
         }
 
     public:
-        KVSortedDataInterfaceCursor(KVDictionary *db, OperationContext *txn, int direction)
+        KVSortedDataInterfaceCursor(KVDictionary *db, OperationContext *txn, int direction, bool unique)
             : _db(db),
               _dir(direction),
               _txn(txn),
+              _unique(unique),
               _cursor(),
               _savedKey(),
               _savedLoc(),
@@ -305,8 +364,12 @@ namespace mongo {
             if (isEOF()) {
                 return BSONObj();
             }
-            IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
-            return entry.key;
+            if (_unique) {
+                return makeKey(_cursor->currKey());
+            } else {
+                IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
+                return entry.key;
+            }
         }
 
         RecordId getRecordId() const {
@@ -314,8 +377,12 @@ namespace mongo {
             if (isEOF()) {
                 return RecordId();
             }
-            IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
-            return entry.loc;
+            if (_unique) {
+                return makeRecordId(_cursor->currVal());
+            } else {
+                IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
+                return entry.loc;
+            }
         }
 
         void advance() {
@@ -348,7 +415,7 @@ namespace mongo {
 
     SortedDataInterface::Cursor* KVSortedDataImpl::newCursor(OperationContext* txn,
                                                              int direction) const {
-        return new KVSortedDataInterfaceCursor(_db.get(), txn, direction);
+        return new KVSortedDataInterfaceCursor(_db.get(), txn, direction, _unique);
     }
 
 } // namespace mongo

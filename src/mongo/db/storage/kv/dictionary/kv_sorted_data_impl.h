@@ -100,9 +100,15 @@ namespace mongo {
 
         virtual long long getSpaceUsedBytes( OperationContext* txn ) const;
 
+        bool unique() const { return _unique; }
+
+        // test-only
+        void setUnique() { _unique = true; }
+
     private:
         // The KVDictionary interface used to store index keys, which map to empty values.
         boost::scoped_ptr<KVDictionary> _db;
+        bool _unique;
     };
 
 } // namespace mongo

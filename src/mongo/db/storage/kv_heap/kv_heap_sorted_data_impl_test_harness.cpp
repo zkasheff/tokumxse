@@ -40,7 +40,11 @@ namespace mongo {
             auto_ptr<OperationContext> opCtx(newOperationContext());
             IndexEntryComparison iec(Ordering::make(BSONObj()));
             auto_ptr<KVDictionary> db(new KVHeapDictionary(KVDictionary::Comparator::useIndexEntryComparison(iec)));
-            return new KVSortedDataImpl(db.release(), opCtx.get(), NULL);
+            KVSortedDataImpl* impl = new KVSortedDataImpl(db.release(), opCtx.get(), NULL);
+            if (unqiue) {
+                impl->setUnique();
+            }
+            return impl;
         }
 
         virtual RecoveryUnit* newRecoveryUnit() {

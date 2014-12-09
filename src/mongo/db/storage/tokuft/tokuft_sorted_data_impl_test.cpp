@@ -31,6 +31,7 @@
 #include <boost/filesystem/operations.hpp>
 
 #include "mongo/db/storage/kv/kv_engine_test_harness.h"
+#include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/sorted_data_interface_test_harness.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/unittest/unittest.h"
@@ -50,14 +51,19 @@ namespace mongo {
         virtual ~TokuFTSortedDataImplHarness() { }
 
 	virtual SortedDataInterface* newSortedDataInterface(bool unique) {
-            // todo unique
             auto_ptr<OperationContext> opCtx(new OperationContextNoop(newRecoveryUnit()));
 
             const string ident = mongoutils::str::stream() << "TokuFTSortedDataInterface-" << _seq++;
             Status status = _engine->createSortedDataInterface(opCtx.get(), ident, NULL);
             invariant(status.isOK());
 
-	    return _engine->getSortedDataInterface(opCtx.get(), ident, NULL);
+            SortedDataInterface* interface = _engine->getSortedDataInterface(opCtx.get(), ident, NULL);
+            KVSortedDataImpl* impl = dynamic_cast<KVSortedDataImpl*>(interface);
+            invariant(impl);
+            if (unique) {
+                impl->setUnique();
+            }
+            return impl;
 	}
 
 	virtual RecoveryUnit* newRecoveryUnit() {

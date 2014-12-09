@@ -59,8 +59,9 @@ namespace mongo {
          * indexes)
          */
         class Comparator {
-            Comparator(const IndexEntryComparison &cmp, bool useMemcmp)
+            Comparator(const IndexEntryComparison &cmp, bool unique, bool useMemcmp)
                 : _cmp(cmp),
+                  _unique(unique),
                   _useMemcmp(useMemcmp)
             {}
 
@@ -72,10 +73,10 @@ namespace mongo {
             static Comparator useMemcmp();
 
             /**
-             * Return a Comparator object that compres keys using an
+             * Return a Comparator object that compares keys using an
              * IndexEntryComparison.
              */
-            static Comparator useIndexEntryComparison(const IndexEntryComparison &cmp);
+            static Comparator useIndexEntryComparison(const IndexEntryComparison &cmp, bool unique);
 
             /**
              * Create a comparator from a serialized byte slice.
@@ -103,6 +104,7 @@ namespace mongo {
 
         private:
             IndexEntryComparison _cmp;
+            bool _unique;
             bool _useMemcmp;
         };
 
@@ -124,7 +126,7 @@ namespace mongo {
          *
          * Return: Status::OK() success.
          */
-        virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value) = 0;
+        virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool overwrite=true) = 0;
 
         /**
          * Remove `key' and its associated value from the dictionary, if
@@ -161,25 +163,6 @@ namespace mongo {
          * Name of the dictionary.
          */
         virtual const char *name() const = 0;
-
-        /**
-         * Storage engines may override this and change supportsDupKeyCheck to return true if they
-         * want to provide their own mechanism.
-         *
-         * The implementation must do a query for anything in the range [lookupLeft, lookupRight].
-         *
-         * If nothing is found, it can return Status::OK().
-         * If something is found, compare its suffix with exactMatchSuffix:
-         *  - If it's identical to exactMatchSuffix, then also return Status::OK().
-         *  - Otherwise, return Status(ErrorCodes::DuplicateKey, ...).
-         */
-        virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const Slice &exactMatchSuffix) {
-            invariant(false);
-            return Status::OK();
-        }
-        virtual bool supportsDupKeyCheck() const {
-            return false;
-        }
 
         /**
          * Basic dictionary stats.

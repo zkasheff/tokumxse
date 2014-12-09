@@ -105,10 +105,17 @@ namespace mongo {
         // Creating a sorted data impl is as simple as creating one with the given `ident'
         //
         // Assume the default ordering if no desc is passed (for tests)
-        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
-        const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
+        BSONObj keyPattern;
+        BSONObj options;
+        bool unique = false;
+        if (desc) {
+            keyPattern = desc->keyPattern();
+            BSONObj info = desc->infoObj();
+            options = info.getObjectField("storageEngine");
+            unique = info["unique"].trueValue();
+        }
         IndexEntryComparison cmp(Ordering::make(keyPattern));
-        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp),
+        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp, unique),
                                   options, false);
 
     }
@@ -117,10 +124,17 @@ namespace mongo {
                                                                const StringData& ident,
                                                                const IndexDescriptor* desc ) {
         // Assume the default ordering if no desc is passed (for tests)
-        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
-        const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
+        BSONObj keyPattern;
+        BSONObj options;
+        bool unique = false;
+        if (desc) {
+            keyPattern = desc->keyPattern();
+            BSONObj info = desc->infoObj();
+            options = info.getObjectField("storageEngine");
+            unique = info["unique"].trueValue();
+        }
         IndexEntryComparison cmp(Ordering::make(keyPattern));
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp),
+        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp, unique),
                                                   options, false));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
     }
