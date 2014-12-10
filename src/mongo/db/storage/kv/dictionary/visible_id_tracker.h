@@ -55,6 +55,14 @@ namespace mongo {
         virtual void setIteratorRestriction(KVRecordStore::KVRecordIterator *iter) const = 0;
     };
 
+    class NoopIdTracker : public VisibleIdTracker {
+    public:
+        bool canReadId(const RecordId &) const { return true; }
+        void addUncommittedId(OperationContext *, const RecordId &) {}
+        RecordId lowestInvisible() const { return RecordId::max(); }
+        void setIteratorRestriction(KVRecordStore::KVRecordIterator *) const {}
+    };
+
     class CappedIdTracker : public VisibleIdTracker {
     protected:
         mutable boost::mutex _mutex;

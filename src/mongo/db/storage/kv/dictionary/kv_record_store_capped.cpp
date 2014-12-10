@@ -43,13 +43,19 @@ namespace mongo {
                                               const StringData& ns,
                                               const StringData& ident,
                                               const CollectionOptions& options,
-                                              KVSizeStorer *sizeStorer)
+                                              KVSizeStorer *sizeStorer,
+                                              bool engineSupportsDocLocking)
         : KVRecordStore(db, opCtx, ns, ident, options, sizeStorer),
           _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
           _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
           _cappedDeleteCallback(NULL),
+          _engineSupportsDocLocking(engineSupportsDocLocking),
           _isOplog(NamespaceString::oplog(ns)),
-          _idTracker(_isOplog ? new OplogIdTracker() : new CappedIdTracker())
+          _idTracker(_engineSupportsDocLocking
+                     ? (_isOplog
+                        ? static_cast<VisibleIdTracker *>(new OplogIdTracker())
+                        : static_cast<VisibleIdTracker *>(new CappedIdTracker()))
+                     : static_cast<VisibleIdTracker *>(new NoopIdTracker()))
     {}
 
     bool KVRecordStoreCapped::needsDelete(OperationContext* txn) const {
@@ -169,7 +175,7 @@ namespace mongo {
 
     RecordId KVRecordStoreCapped::oplogStartHack(OperationContext* txn,
                                                  const RecordId& startingPosition) const {
-        if (!_idTracker) {
+        if (!_engineSupportsDocLocking) {
             return RecordId().setInvalid();
         }
 
@@ -185,6 +191,10 @@ namespace mongo {
 
     Status KVRecordStoreCapped::oplogDiskLocRegister(OperationContext* txn,
                                                      const OpTime& opTime) {
+        if (!_engineSupportsDocLocking) {
+            return Status::OK();
+        }
+
         StatusWith<RecordId> loc = oploghack::keyForOptime( opTime );
         if ( !loc.isOK() )
             return loc.getStatus();
@@ -197,7 +207,7 @@ namespace mongo {
                                                      const RecordId& start,
                                                      const CollectionScanParams::Direction& dir) const {
         auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
-        if (dir == CollectionScanParams::FORWARD) {
+        if (_engineSupportsDocLocking && dir == CollectionScanParams::FORWARD) {
             KVRecordIterator *kvIter = dynamic_cast<KVRecordIterator *>(iter.get());
             invariant(kvIter);
             _idTracker->setIteratorRestriction(kvIter);

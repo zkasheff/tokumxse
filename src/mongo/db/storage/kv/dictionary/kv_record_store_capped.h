@@ -48,7 +48,8 @@ namespace mongo {
                              const StringData& ns,
                              const StringData& ident,
                              const CollectionOptions& options,
-                             KVSizeStorer *sizeStorer);
+                             KVSizeStorer *sizeStorer,
+                             bool engineSupportsDocLocking);
 
         virtual ~KVRecordStoreCapped() { }
 
@@ -103,6 +104,7 @@ namespace mongo {
         CappedDocumentDeleteCallback* _cappedDeleteCallback;
         boost::mutex _cappedDeleteMutex;
 
+        const bool _engineSupportsDocLocking;
         const bool _isOplog;
         scoped_ptr<VisibleIdTracker> _idTracker;
     };
