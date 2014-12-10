@@ -36,6 +36,7 @@
 namespace mongo {
 
     class KVSizeStorer;
+    class VisibleIdTracker;
 
     // Like a KVRecordStore, but size is capped and inserts
     // may truncate off old records from the beginning.
@@ -62,6 +63,11 @@ namespace mongo {
 
         virtual void deleteRecord( OperationContext* txn, const RecordId& dl );
 
+        virtual RecordIterator* getIterator( OperationContext* txn,
+                                             const RecordId& start = RecordId(),
+                                             const CollectionScanParams::Direction& dir =
+                                             CollectionScanParams::FORWARD ) const;
+
         virtual void appendCustomStats( OperationContext* txn,
                                         BSONObjBuilder* result,
                                         double scale ) const;
@@ -81,6 +87,12 @@ namespace mongo {
 
         virtual bool cappedMaxSize() const { return _cappedMaxSize; }
 
+        virtual RecordId oplogStartHack(OperationContext* txn,
+                                        const RecordId& startingPosition) const;
+
+        virtual Status oplogDiskLocRegister(OperationContext* txn,
+                                            const OpTime& opTime);
+
     private:
         bool needsDelete(OperationContext *txn) const;
 
@@ -90,6 +102,9 @@ namespace mongo {
         const int64_t _cappedMaxDocs;
         CappedDocumentDeleteCallback* _cappedDeleteCallback;
         boost::mutex _cappedDeleteMutex;
+
+        const bool _isOplog;
+        scoped_ptr<VisibleIdTracker> _idTracker;
     };
 
 } // namespace mongo

@@ -40,6 +40,7 @@
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
 #include "mongo/db/storage/kv/dictionary/kv_size_storer.h"
+#include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
 #include "mongo/db/storage/kv/slice.h"
 
 #include "mongo/platform/endian.h"
@@ -268,14 +269,10 @@ namespace mongo {
         invariant(s.isOK());
     }
 
-    StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
-                                                     const char* data,
-                                                     int len,
-                                                     bool enforceQuota ) {
-        const RecordId loc = _nextId();
-        const RecordIdKey key(loc);
-        const Slice value(data, len);
-
+    Status KVRecordStore::_insertRecord(OperationContext *txn,
+                                        const RecordId &id,
+                                        const Slice &value) {
+        const RecordIdKey key(id);
         DEV {
             // Should never overwrite an existing record.
             Slice v;
@@ -283,14 +280,24 @@ namespace mongo {
             invariant(status.code() == ErrorCodes::NoSuchKey);
         }
 
-        const Status status = _db->insert(txn, key.key(), value);
+        return _db->insert(txn, key.key(), value);
+    }
+
+    StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
+                                                     const char* data,
+                                                     int len,
+                                                     bool enforceQuota ) {
+        const RecordId id = _nextId();
+        const Slice value(data, len);
+
+        const Status status = _insertRecord(txn, id, value);
         if (!status.isOK()) {
             return StatusWith<RecordId>(status);
         }
 
         _updateStats(txn, 1, value.size());
 
-        return StatusWith<RecordId>(loc);
+        return StatusWith<RecordId>(id);
     }
 
     StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
@@ -469,8 +476,16 @@ namespace mongo {
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
                                                       const RecordId &start,
-                                                      const CollectionScanParams::Direction &dir) :
-        _db(db), _dir(dir), _savedLoc(RecordId()), _savedVal(Slice()), _txn(txn), _cursor() {
+                                                      const CollectionScanParams::Direction &dir)
+        : _db(db),
+          _dir(dir),
+          _savedLoc(RecordId()),
+          _savedVal(Slice()),
+          _lowestInvisible(RecordId()),
+          _idTracker(NULL),
+          _txn(txn),
+          _cursor()
+    {
         if (start.isNull()) {
             // A null RecordId means the beginning for a forward cursor,
             // and the end for a reverse cursor.
@@ -512,6 +527,23 @@ namespace mongo {
         // about to advance the underlying cursor.
         _saveLocAndVal();
         _cursor->advance(_txn);
+
+        if (!isEOF()) {
+            if (_idTracker) {
+                RecordId currentId = curr();
+                if (!_lowestInvisible.isNull()) {
+                    // oplog
+                    if (currentId > _lowestInvisible) {
+                        _cursor.reset();
+                    } else if (currentId == _lowestInvisible && !_idTracker->canReadId(currentId)) {
+                        _cursor.reset();
+                    }
+                } else if (!_idTracker->canReadId(currentId)) {
+                    _cursor.reset();
+                }
+            }
+        }
+
         return _savedLoc;
     }
 
