@@ -32,11 +32,11 @@
 #pragma once
 
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
+#include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
 
 namespace mongo {
 
     class KVSizeStorer;
-    class VisibleIdTracker;
 
     // Like a KVRecordStore, but size is capped and inserts
     // may truncate off old records from the beginning.
