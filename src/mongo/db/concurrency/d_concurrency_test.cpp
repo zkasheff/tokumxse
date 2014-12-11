@@ -138,10 +138,24 @@ namespace mongo {
         ASSERT(ls.isW());
     }
 
-    TEST(DConcurrency, DBReadTakesS) {
+    TEST(DConcurrency, TempReleaseRecursive) {
+        MMAPV1LockerImpl ls(1);
+        Lock::GlobalWrite globalWrite(&ls);
+        Lock::DBLock lk(&ls, "SomeDBName", MODE_X);
+
+        {
+            Lock::TempRelease tempRelease(&ls);
+            ASSERT(ls.isW());
+            ASSERT(ls.isDbLockedForMode("SomeDBName", MODE_X));
+        }
+
+        ASSERT(ls.isW());
+    }
+
+    TEST(DConcurrency, DBLockTakesS) {
         MMAPV1LockerImpl ls(1);
 
-        Lock::DBRead dbRead(&ls, "db");
+        Lock::DBLock dbRead(&ls, "db", MODE_S);
 
         const ResourceId resIdDb(RESOURCE_DATABASE, string("db"));
         ASSERT(ls.getLockMode(resIdDb) == MODE_S);
@@ -169,7 +183,7 @@ namespace mongo {
         MMAPV1LockerImpl ls(1);
 
         Lock::DBLock r1(&ls, "db1", MODE_X);
-        Lock::DBRead r2(&ls, "db1");
+        Lock::DBLock r2(&ls, "db1", MODE_S);
 
         ASSERT(ls.isWriteLocked("db1"));
     }
