@@ -80,6 +80,8 @@ namespace mongo {
         // THe KVDictionaryHeap does not support fine-grained locking.
         bool supportsDocLocking() const { return false; }
 
+        bool hasIdent(OperationContext* opCtx, const StringData& ident) const;
+
         std::vector<std::string> getAllIdents( OperationContext* opCtx ) const;
 
         void cleanShutdownImpl() {}

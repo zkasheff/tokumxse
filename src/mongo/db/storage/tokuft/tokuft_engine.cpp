@@ -344,6 +344,31 @@ namespace mongo {
         return Status::OK();
     }
 
+    bool TokuFTEngine::hasIdent(OperationContext* opCtx, const StringData& ident) const {
+        ftcxx::Slice key(ident.size() + 1);
+        std::copy(ident.begin(), ident.end(), key.mutable_data());
+        key.mutable_data()[ident.size()] = '\0';
+
+        typedef ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> DirectoryCursor;
+        DirectoryCursor cur(_env.buffered_cursor(_getDBTxn(opCtx),
+                                                 TokuFTDictionary::Comparator(KVDictionary::Comparator::useMemcmp()),
+                                                 ftcxx::DB::NullFilter()));
+        TokuFTDictionary::Comparator cmp(KVDictionary::Comparator::useMemcmp());
+        cur.seek(key);
+        while (cur.ok()) {
+            ftcxx::Slice foundKey;
+            ftcxx::Slice foundVal;
+            cur.next(foundKey, foundVal);
+            int c = cmp(foundKey, key);
+            if (c == 0) {
+                return true;
+            } else if (c > 0) {
+                break;
+            }
+        }
+        return false;
+    }
+
     std::vector<std::string> TokuFTEngine::getAllIdents(OperationContext *opCtx) const {
         std::vector<std::string> idents;
 

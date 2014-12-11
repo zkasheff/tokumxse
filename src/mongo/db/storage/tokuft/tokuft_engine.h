@@ -94,6 +94,8 @@ namespace mongo {
 
         void cleanShutdownImpl();
 
+        bool hasIdent(OperationContext* opCtx, const StringData& ident) const;
+
         std::vector<std::string> getAllIdents(OperationContext *opCtx) const;
 
         ftcxx::DBEnv& env() { return _env; }

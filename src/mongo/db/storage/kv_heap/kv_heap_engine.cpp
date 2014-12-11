@@ -69,6 +69,11 @@ namespace mongo {
         return Status::OK();
     }
 
+    bool KVHeapEngine::hasIdent(OperationContext* opCtx, const StringData& ident) const {
+        boost::mutex::scoped_lock lk(_mapMutex);
+        return _map.find(ident) != _map.end();
+    }
+
     std::vector<std::string> KVHeapEngine::getAllIdents( OperationContext* opCtx ) const {
         std::vector<std::string> idents;
         boost::mutex::scoped_lock lk(_mapMutex);
