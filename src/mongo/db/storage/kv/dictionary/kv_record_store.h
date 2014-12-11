@@ -241,7 +241,7 @@ namespace mongo {
         boost::scoped_ptr<KVDictionary> _db;
 
         // A thread-safe 64 bit integer for generating new unique RecordId keys.
-        AtomicUInt64 _nextIdNum;
+        AtomicInt64 _nextIdNum;
 
         // Locally cached copies of these counters.
         AtomicInt64 _dataSize;

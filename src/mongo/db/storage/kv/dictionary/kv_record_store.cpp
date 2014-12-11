@@ -32,6 +32,7 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include <algorithm>
+#include <climits>
 #include <boost/static_assert.hpp>
 
 #include "mongo/db/catalog/collection_options.h"
@@ -64,11 +65,23 @@ namespace mongo {
      * and fastest comparator.
      */
     class RecordIdKey {
-        RecordId _loc;
+        RecordId _id;
         uint64_t _key;
 
         // We assume that a RecordId can be represented in a 64 bit integer.
         BOOST_STATIC_ASSERT(sizeof(RecordId) == sizeof(uint64_t));
+
+        // In order to use memcmp to compare keys the same way as they're compared by
+        // RecordId::compare(), we need to move negative numbers up into the unsigned space before
+        // converting to big-endian.  These convert back and forth.
+        //
+        // Note: this is intimately tied to the internal representation of RecordIds.
+        static uint64_t toUnsigned(int64_t v) {
+            return static_cast<uint64_t>(v - LLONG_MIN);
+        }
+        static int64_t toSigned(uint64_t v) {
+            return static_cast<int64_t>(v) + LLONG_MIN;
+        }
 
     public:
         /**
@@ -82,12 +95,10 @@ namespace mongo {
          *   whose low order bits are `o'
          * - Convert that integer to big endian and store it in `_key'
          */
-        RecordIdKey(const RecordId &loc) :
-            _loc(loc),
-            _key() {
-            _key = endian::nativeToBig(uint64_t(loc.a()) << 32ULL |
-                                       uint64_t(loc.getOfs()));
-        }
+        RecordIdKey(const RecordId &id)
+            : _id(id),
+              _key(endian::nativeToBig(toUnsigned(id.repr())))
+        {}
 
         /**
          * Used when we have a big-endian key Slice from the KVDictionary
@@ -101,13 +112,10 @@ namespace mongo {
          *   constructed from the high order bits of `_k' and where `o' is
          *   constructed from the low order bits.
          */
-        RecordIdKey(const Slice &key) :
-            _loc(),
-            _key(key.as<uint64_t>()) {
-            uint64_t k = endian::bigToNative(_key);
-            _loc = RecordId((k & 0xFFFFFFFF00000000) >> 32ULL,
-                            k & 0x00000000FFFFFFFF);
-        }
+        RecordIdKey(const Slice &key)
+            : _id(toSigned(endian::bigToNative(key.as<uint64_t>()))),
+              _key(key.as<uint64_t>())
+        {}
 
         /**
          * Return an un-owned slice of _key, suitable for use as a key
@@ -120,8 +128,8 @@ namespace mongo {
         /**
          * Return the RecordId representation of a deserialized key Slice
          */
-        RecordId loc() const {
-            return _loc;
+        RecordId id() const {
+            return _id;
         }
     };
 
@@ -141,10 +149,11 @@ namespace mongo {
         // Get the next id, which is one greater than the greatest stored.
         boost::scoped_ptr<RecordIterator> iter(getIterator(opCtx, RecordId(), CollectionScanParams::BACKWARD));
         if (!iter->isEOF()) {
-            const RecordId lastLoc = iter->curr();
-            _nextIdNum.store(lastLoc.getOfs() + (uint64_t(lastLoc.a()) << 32ULL) + 1);
+            const RecordId lastId = iter->curr();
+            invariant(lastId.isNormal());
+            _nextIdNum.store(lastId.repr() + 1);
         } else {
-            // Need to start at 1 so we are always higher than RecordId::min()
+            // Need to start at 1 so we are within bounds of RecordId::isNormal()
             _nextIdNum.store(1);
         }
 
@@ -256,12 +265,12 @@ namespace mongo {
         return true;
     }
 
-    void KVRecordStore::deleteRecord( OperationContext* txn, const RecordId& loc ) {
-        const RecordIdKey key(loc);
+    void KVRecordStore::deleteRecord( OperationContext* txn, const RecordId& id ) {
+        const RecordIdKey key(id);
 
         Slice val;
         Status s = _db->get(txn, key.key(), val);
-        invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << loc.toString() << " for delete: " << s.toString());
+        invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << id << " for delete: " << s.toString());
 
         _updateStats(txn, -1, -val.size());
 
@@ -450,12 +459,7 @@ namespace mongo {
     }
 
     RecordId KVRecordStore::_nextId() {
-        const uint64_t myId = _nextIdNum.fetchAndAdd(1);
-        int a = myId >> 32;
-        // This masks the lowest 4 bytes of myId
-        int ofs = myId & 0x00000000FFFFFFFF;
-        RecordId loc( a, ofs );
-        return loc;
+        return RecordId(_nextIdNum.fetchAndAdd(1));
     }
 
     // ---------------------------------------------------------------------- //
@@ -469,7 +473,8 @@ namespace mongo {
         _savedLoc = RecordId();
         _savedVal = Slice();
 
-        invariant(loc.isValid() && !loc.isNull());
+        // A new iterator with no start position will be either min() or max()
+        invariant(loc.isNormal() || loc == RecordId::min() || loc == RecordId::max());
         const RecordIdKey key(loc);
         _cursor.reset(_db->getCursor(_txn, key.key(), _dir));
     }
@@ -479,9 +484,9 @@ namespace mongo {
                                                       const CollectionScanParams::Direction &dir)
         : _db(db),
           _dir(dir),
-          _savedLoc(RecordId()),
-          _savedVal(Slice()),
-          _lowestInvisible(RecordId()),
+          _savedLoc(),
+          _savedVal(),
+          _lowestInvisible(),
           _idTracker(NULL),
           _txn(txn),
           _cursor()
@@ -505,7 +510,7 @@ namespace mongo {
         }
 
         const RecordIdKey key(_cursor->currKey());
-        return key.loc();
+        return key.id();
     }
 
     void KVRecordStore::KVRecordIterator::_saveLocAndVal() {
