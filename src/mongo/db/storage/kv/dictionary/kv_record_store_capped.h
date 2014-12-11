@@ -88,8 +88,8 @@ namespace mongo {
 
         virtual bool cappedMaxSize() const { return _cappedMaxSize; }
 
-        virtual RecordId oplogStartHack(OperationContext* txn,
-                                        const RecordId& startingPosition) const;
+        virtual boost::optional<RecordId> oplogStartHack(OperationContext* txn,
+                                                         const RecordId& startingPosition) const;
 
         virtual Status oplogDiskLocRegister(OperationContext* txn,
                                             const OpTime& opTime);

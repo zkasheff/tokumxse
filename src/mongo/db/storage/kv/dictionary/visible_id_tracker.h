@@ -92,11 +92,8 @@ namespace mongo {
 
         virtual RecordId lowestInvisible() const {
             boost::mutex::scoped_lock lk(_mutex);
-            RecordId li = _highest;
-            li.inc(1);
             return (_uncommittedIds.empty()
-                    //? RecordId(_highest.repr() + 1)  // eww
-                    ? li
+                    ? RecordId(_highest.repr() + 1)
                     : *_uncommittedIds.begin());
         }
 

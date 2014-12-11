@@ -173,10 +173,10 @@ namespace mongo {
         }
     }
 
-    RecordId KVRecordStoreCapped::oplogStartHack(OperationContext* txn,
-                                                 const RecordId& startingPosition) const {
+    boost::optional<RecordId> KVRecordStoreCapped::oplogStartHack(OperationContext* txn,
+                                                                  const RecordId& startingPosition) const {
         if (!_engineSupportsDocLocking) {
-            return RecordId().setInvalid();
+            return boost::none;
         }
 
         RecordId lowestInvisible = _idTracker->lowestInvisible();
@@ -186,7 +186,7 @@ namespace mongo {
                 return iter->curr();
             }
         }
-        return RecordId().setInvalid();
+        return boost::none;
     }
 
     Status KVRecordStoreCapped::oplogDiskLocRegister(OperationContext* txn,
