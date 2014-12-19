@@ -28,14 +28,14 @@
 
 #pragma once
 
-#include "mongo/db/concurrency/lock_mgr_new.h"
+#include "mongo/db/concurrency/lock_manager.h"
 #include "mongo/db/concurrency/lock_state.h"
 
 namespace mongo {
 
     class LockerForTests : public LockerImpl<false> {
     public:
-        explicit LockerForTests(LockerId lockerId) : LockerImpl<false>(lockerId) {
+        explicit LockerForTests() {
             lockGlobal(MODE_S);
         }
 

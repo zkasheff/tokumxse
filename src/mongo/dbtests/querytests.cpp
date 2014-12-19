@@ -1216,7 +1216,7 @@ namespace QueryTests {
             {
                 WriteUnitOfWork wunit(&_txn);
                 ASSERT( userCreateNS(&_txn, ctx.db(), ns(),
-                                     fromjson( "{ capped : true, size : 2000 }" ), false ).isOK() );
+                                     fromjson( "{ capped : true, size : 2000, max: 10000 }" ), false ).isOK() );
                 wunit.commit();
             }
 
@@ -1352,13 +1352,24 @@ namespace QueryTests {
         }
 
         void run() {
+    cout << "1 SFDSDF" << endl;
             BSONObj info;
             ASSERT( _client.runCommand( "unittests", BSON( "create" << "querytests.findingstart" << "capped" << true << "$nExtents" << 5 << "autoIndexId" << false ), info ) );
 
             int i = 0;
-            for( int oldCount = -1;
-                    count() != oldCount;
-                    oldCount = count(), _client.insert( ns(), BSON( "ts" << i++ ) ) );
+            int max = 1;
+
+            while ( 1 ) {
+                int oldCount = count();
+                _client.insert( ns(), BSON( "ts" << i++ ) );
+                int newCount = count();
+                if ( oldCount == newCount ||
+                     newCount < max )
+                    break;
+
+                if ( newCount > max )
+                    max = newCount;
+            }
 
             for( int k = 0; k < 5; ++k ) {
                 _client.insert( ns(), BSON( "ts" << i++ ) );
@@ -1370,7 +1381,7 @@ namespace QueryTests {
                     ASSERT( !next[ "ts" ].eoo() );
                     ASSERT_EQUALS( ( j > min ? j : min ), next[ "ts" ].numberInt() );
                 }
-                //cout << k << endl;
+                cout << k << endl;
             }
         }
     };
@@ -1381,6 +1392,7 @@ namespace QueryTests {
         }
 
         void run() {
+    cout << "2 ;kljsdf" << endl;
             size_t startNumCursors = numCursorsOpen();
 
             BSONObj info;
@@ -1399,6 +1411,7 @@ namespace QueryTests {
                     ASSERT( !next[ "ts" ].eoo() );
                     ASSERT_EQUALS( ( j > min ? j : min ), next[ "ts" ].numberInt() );
                 }
+                cout << k << endl;
             }
 
             ASSERT_EQUALS( startNumCursors, numCursorsOpen() );
@@ -1414,6 +1427,7 @@ namespace QueryTests {
         FindingStartStale() : CollectionBase( "findingstart" ) {}
 
         void run() {
+    cout << "3 xcxcv" << endl;
             size_t startNumCursors = numCursorsOpen();
 
             // Check OplogReplay mode with missing collection.
