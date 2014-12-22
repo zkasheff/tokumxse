@@ -297,7 +297,7 @@ namespace mongo {
                 string fullns = dbName + '.' + cmdObj.firstElement().valuestrsafe();
 
                 DBConfigPtr conf = grid.getDBConfig( dbName , false );
-                uassert(28588,
+                uassert(28592,
                         str::stream() << "Failed to load db sharding metadata for " << fullns,
                         conf);
 

@@ -44,13 +44,13 @@ namespace mongo {
 
     ftcxx::DBEnv& tokuftGlobalEnv() {
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
-        massert(28585, "no storage engine available", storageEngine);
+        massert(28597, "no storage engine available", storageEngine);
         KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
-        massert(28586, "storage engine is not a KVStorageEngine", kvStorageEngine);
+        massert(28594, "storage engine is not a KVStorageEngine", kvStorageEngine);
         KVEngine* kvEngine = kvStorageEngine->getEngine();
         invariant(kvEngine);
         TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
-        massert(28587, "storage engine is not TokuFT", tokuftEngine);
+        massert(28595, "storage engine is not TokuFT", tokuftEngine);
         return tokuftEngine->env();
     }
 
