@@ -180,7 +180,7 @@ namespace mongo {
     void KVStorageEngine::finishInit() {
     }
 
-    RecoveryUnit* KVStorageEngine::newRecoveryUnit( OperationContext* opCtx ) {
+    RecoveryUnit* KVStorageEngine::newRecoveryUnit() {
         if ( !_engine ) {
             // shutdown
             return NULL;

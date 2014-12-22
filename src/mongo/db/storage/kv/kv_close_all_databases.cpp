@@ -49,7 +49,7 @@ namespace mongo {
      */
     class LockerImplShutdown : public DefaultLockerImpl {
     public:
-        LockerImplShutdown() : DefaultLockerImpl(0) {}
+        LockerImplShutdown() : DefaultLockerImpl() {}
         virtual ~LockerImplShutdown() {}
         virtual bool isW() const { return true; }
         virtual bool isR() const { return true; }

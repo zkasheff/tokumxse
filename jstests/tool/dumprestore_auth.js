@@ -46,16 +46,15 @@ assert.eq(1 , c.count() , "setup2");
 
 assert.commandWorked(c.runCommand("collMod", {usePowerOf2Sizes: false}));
 
-var listCollOut = c.getDB().runCommand("listCollections");
-assert.eq(1, listCollOut.ok, "listCollections failed");
+var collections = c.getDB().getCollectionInfos();
 var fooColl = null;
-listCollOut.collections.forEach(function(coll) {
+collections.forEach(function(coll) {
     if (coll.name === "foo") {
         fooColl = coll;
     }
 });
 assert.neq(null, fooColl, "foo collection doesn't exist");
-assert.eq(0, fooColl.options.flags, "find namespaces 1");
+assert(!fooColl.options.flags, "find namespaces 1");
 
 t.runTool("dump" , "--out" , t.ext, "--username", "backup", "--password", "password");
 
@@ -81,7 +80,7 @@ listCollOut.collections.forEach(function(coll) {
     }
 });
 assert.neq(null, fooColl, "foo collection doesn't exist");
-assert.eq(0, fooColl.options.flags, "find namespaces 2");
+assert(!fooColl.options.flags, "find namespaces 2");
 
 assert.eq(sysUsers, adminDB.system.users.count());
 
@@ -113,7 +112,7 @@ listCollOut.collections.forEach(function(coll) {
     }
 });
 assert.neq(null, fooColl, "foo collection doesn't exist");
-assert.eq(0, fooColl.options.flags, "find namespaces 3");
+assert(!fooColl.options.flags, "find namespaces 3");
 
 assert.eq(sysUsers, adminDB.system.users.count());
 

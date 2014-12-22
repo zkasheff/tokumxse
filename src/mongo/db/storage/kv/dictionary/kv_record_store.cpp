@@ -173,7 +173,7 @@ namespace mongo {
         }
     }
 
-#define invariantKVOK(s, expr) massert(28584, expr, s.isOK())
+#define invariantKVOK(s, expr) massert(28596, expr, s.isOK())
 
     long long KVRecordStore::dataSize( OperationContext* txn ) const {
         if (_sizeStorer) {

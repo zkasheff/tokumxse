@@ -253,7 +253,7 @@ namespace mongo {
                 if (scaleElt.ok()) {
                     scale = scaleElt.safeNumberLong();
                 }
-                uassert(28588, "scale must be positive", scale > 0);
+                uassert(28593, "scale must be positive", scale > 0);
             }
 
             NestedBuilder::Stack result;
