@@ -397,7 +397,7 @@ namespace mongo {
                                     bool scanData,
                                     ValidateAdaptor* adaptor,
                                     ValidateResults* results,
-                                    BSONObjBuilder* output ) const {
+                                    BSONObjBuilder* output ) {
         bool invalidObject = false;
         size_t numRecords = 0;
         for (boost::scoped_ptr<RecordIterator> iter( getIterator( txn ) );
