@@ -46,7 +46,7 @@ namespace mongo {
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
         massert(28597, "no storage engine available", storageEngine);
         KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
-        massert(28594, "storage engine is not a KVStorageEngine", kvStorageEngine);
+        massert(28601, "storage engine is not a KVStorageEngine", kvStorageEngine);
         KVEngine* kvEngine = kvStorageEngine->getEngine();
         invariant(kvEngine);
         TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
