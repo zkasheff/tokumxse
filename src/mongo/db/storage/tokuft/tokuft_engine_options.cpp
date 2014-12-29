@@ -45,7 +45,7 @@ namespace mongo {
           directio(false),
           fsRedzone(5),
           journalCommitInterval(100),
-          lockTimeout(0),
+          lockTimeout(100),
           locktreeMaxMemory(0),  // let this be the ft default, computed from cacheSize
           compressBuffersBeforeEviction(false),
           numCachetableBucketMutexes(1<<20)
