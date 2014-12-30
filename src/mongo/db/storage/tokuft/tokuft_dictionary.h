@@ -137,7 +137,7 @@ namespace mongo {
     
         virtual bool useExactStats() const { return true; }
 
-        virtual void appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const;
+        virtual bool appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const;
 
         virtual Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info );
 

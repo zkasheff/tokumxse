@@ -214,6 +214,10 @@ namespace mongo {
         return stats.storageSize;
     }
 
+    bool KVSortedDataImpl::appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const {
+        return _db->appendCustomStats(txn, output, scale);
+    }
+
     // ---------------------------------------------------------------------- //
 
     class KVSortedDataInterfaceCursor : public SortedDataInterface::Cursor {

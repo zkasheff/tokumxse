@@ -117,7 +117,9 @@ namespace mongo {
 
         Stats getStats() const { return _stats; }
 
-        void appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const { } 
+        bool appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const {
+            return false;
+        }
 
         Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info );
 

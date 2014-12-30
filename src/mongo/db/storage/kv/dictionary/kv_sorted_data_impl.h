@@ -100,6 +100,8 @@ namespace mongo {
 
         virtual long long getSpaceUsedBytes( OperationContext* txn ) const;
 
+        virtual bool appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const;
+
     private:
         // The KVDictionary interface used to store index keys, which map to empty values.
         boost::scoped_ptr<KVDictionary> _db;

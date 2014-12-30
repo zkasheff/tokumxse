@@ -175,8 +175,9 @@ namespace mongo {
         return kvStats;
     }
     
-    void TokuFTDictionary::appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const {
+    bool TokuFTDictionary::appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const {
         // TODO: stat64
+        return false;
     }
 
     Status TokuFTDictionary::setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info ) {

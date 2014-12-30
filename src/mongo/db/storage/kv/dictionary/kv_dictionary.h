@@ -212,7 +212,7 @@ namespace mongo {
          *
          * Return: Status::OK(), success
          */
-        virtual void appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale) const = 0;
+        virtual bool appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale) const = 0;
 
         /**
          * Set a custom `option' for this dictionary
