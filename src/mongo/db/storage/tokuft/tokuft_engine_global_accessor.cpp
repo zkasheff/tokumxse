@@ -50,7 +50,7 @@ namespace mongo {
         KVEngine* kvEngine = kvStorageEngine->getEngine();
         invariant(kvEngine);
         TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
-        massert(28595, "storage engine is not TokuFT", tokuftEngine);
+        massert(28602, "storage engine is not TokuFT", tokuftEngine);
         return tokuftEngine->env();
     }
 
