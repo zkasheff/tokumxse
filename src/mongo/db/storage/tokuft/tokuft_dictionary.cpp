@@ -174,7 +174,7 @@ namespace mongo {
         kvStats.numKeys = stats.num_keys;
         return kvStats;
     }
-    
+
     bool TokuFTDictionary::appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const {
         // TODO: stat64
         return false;

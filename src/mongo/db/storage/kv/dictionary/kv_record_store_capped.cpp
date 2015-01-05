@@ -152,7 +152,7 @@ namespace mongo {
                                                  double scale ) const {
         result->append("capped", true);
         result->appendIntOrLL("max", _cappedMaxDocs);
-        result->appendIntOrLL("maxSize", _cappedMaxSize);
+        result->appendIntOrLL("maxSize", _cappedMaxSize / scale);
         KVRecordStore::appendCustomStats(txn, result, scale);
     }
 
