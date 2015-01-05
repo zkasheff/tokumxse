@@ -159,18 +159,16 @@ namespace mongo {
     void KVRecordStoreCapped::temp_cappedTruncateAfter(OperationContext* txn,
                                                        RecordId end,
                                                        bool inclusive) {
+        WriteUnitOfWork wu( txn );
         // Not very efficient, but it should only be used by tests.
-        for (boost::scoped_ptr<RecordIterator> iter(
-                 getIterator(txn, end, CollectionScanParams::FORWARD));
-             !iter->isEOF(); ) {
+        for (boost::scoped_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, end)); !iter->isEOF(); ) {
             RecordId loc = iter->getNext();
             if (!inclusive && loc == end) {
                 continue;
             }
-            WriteUnitOfWork wu( txn );
             deleteRecord(txn, loc);
-            wu.commit();
         }
+        wu.commit();
     }
 
     boost::optional<RecordId> KVRecordStoreCapped::oplogStartHack(OperationContext* txn,
