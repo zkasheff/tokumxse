@@ -38,6 +38,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/record_id.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
+#include "mongo/db/storage/kv/dictionary/kv_recovery_unit.h"
 #include "mongo/db/storage/recovery_unit.h"
 
 namespace mongo {
@@ -52,7 +53,7 @@ namespace mongo {
 
         virtual RecordId lowestInvisible() const = 0;
 
-        virtual void setIteratorRestriction(KVRecordStore::KVRecordIterator *iter) const = 0;
+        virtual void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const = 0;
     };
 
     class NoopIdTracker : public VisibleIdTracker {
@@ -60,7 +61,7 @@ namespace mongo {
         bool canReadId(const RecordId &) const { return true; }
         void addUncommittedId(OperationContext *, const RecordId &) {}
         RecordId lowestInvisible() const { return RecordId::max(); }
-        void setIteratorRestriction(KVRecordStore::KVRecordIterator *) const {}
+        void setIteratorRestriction(KVRecoveryUnit *, KVRecordStore::KVRecordIterator *) const {}
     };
 
     class CappedIdTracker : public VisibleIdTracker {
@@ -97,7 +98,7 @@ namespace mongo {
                     : *_uncommittedIds.begin());
         }
 
-        virtual void setIteratorRestriction(KVRecordStore::KVRecordIterator *iter) const {
+        virtual void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const {
             iter->setIdTracker(this);
         }
 
@@ -130,9 +131,13 @@ namespace mongo {
 
     class OplogIdTracker : public CappedIdTracker {
     public:
-        void setIteratorRestriction(KVRecordStore::KVRecordIterator *iter) const {
-            CappedIdTracker::setIteratorRestriction(iter);
-            iter->setLowestInvisible(lowestInvisible());
+        void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const {
+            CappedIdTracker::setIteratorRestriction(ru, iter);
+
+            if (!ru->hasSnapshot() || ru->getLowestInvisible().isNull()) {
+                ru->setLowestInvisible(lowestInvisible());
+            }
+            iter->setLowestInvisible(ru->getLowestInvisible());
         }
     };
 

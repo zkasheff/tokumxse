@@ -538,9 +538,9 @@ namespace mongo {
                 RecordId currentId = curr();
                 if (!_lowestInvisible.isNull()) {
                     // oplog
-                    if (currentId > _lowestInvisible) {
+                    if (currentId >= _lowestInvisible) {
                         _cursor.reset();
-                    } else if (currentId == _lowestInvisible && !_idTracker->canReadId(currentId)) {
+                    } else if (RecordId(currentId.repr() + 1) == _lowestInvisible && !_idTracker->canReadId(currentId)) {
                         _cursor.reset();
                     }
                 } else if (!_idTracker->canReadId(currentId)) {

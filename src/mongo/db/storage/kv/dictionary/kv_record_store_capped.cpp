@@ -208,9 +208,12 @@ namespace mongo {
                                                      const CollectionScanParams::Direction& dir) const {
         auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
         if (_engineSupportsDocLocking && dir == CollectionScanParams::FORWARD) {
+            KVRecoveryUnit *ru = dynamic_cast<KVRecoveryUnit *>(txn->recoveryUnit());
+            invariant(ru);
             KVRecordIterator *kvIter = dynamic_cast<KVRecordIterator *>(iter.get());
             invariant(kvIter);
-            _idTracker->setIteratorRestriction(kvIter);
+
+            _idTracker->setIteratorRestriction(ru, kvIter);
         }
         return iter.release();
     }

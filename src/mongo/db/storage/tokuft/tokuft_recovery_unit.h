@@ -31,7 +31,7 @@
 
 #include <deque>
 
-#include "mongo/db/storage/recovery_unit.h"
+#include "mongo/db/storage/kv/dictionary/kv_recovery_unit.h"
 
 #include <boost/shared_ptr.hpp>
 #include <ftcxx/db_env.hpp>
@@ -42,7 +42,7 @@ namespace mongo {
     class OperationContext;
     class TokuFTStorageEngine;
 
-    class TokuFTRecoveryUnit : public RecoveryUnit {
+    class TokuFTRecoveryUnit : public KVRecoveryUnit {
         MONGO_DISALLOW_COPYING(TokuFTRecoveryUnit);
     public:
         TokuFTRecoveryUnit(const ftcxx::DBEnv &env);
@@ -66,6 +66,8 @@ namespace mongo {
         //
 
         void *writingPtr(void *data, size_t len);
+
+        bool hasSnapshot() const;
 
     private:
         typedef boost::shared_ptr<Change> ChangePtr;

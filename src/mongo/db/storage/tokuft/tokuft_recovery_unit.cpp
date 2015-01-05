@@ -74,7 +74,7 @@ namespace mongo {
         }
         _changes.clear();
 
-        if (_txn.txn() != NULL) {
+        if (hasSnapshot()) {
             _txn.commit(_commitFlags());
         }
         _txn = ftcxx::DBTxn();
@@ -84,7 +84,7 @@ namespace mongo {
         invariant(_depth == 0);
         invariant(_changes.size() == 0);
 
-        if (_txn.txn() != NULL) {
+        if (hasSnapshot()) {
             _txn.commit(_commitFlags());
         }
         _txn = ftcxx::DBTxn();
@@ -112,7 +112,7 @@ namespace mongo {
         // The underlying transaction needs to have been committed to
         // the ydb environment, otherwise it's still provisional and
         // cannot be guaranteed durable even after a sync to the log.
-        invariant(_txn.txn() == NULL);
+        invariant(!hasSnapshot());
 
         // Once the log is synced, the transaction is fully durable.
         const int r = _env.env()->log_flush(_env.env(), NULL);
@@ -132,6 +132,10 @@ namespace mongo {
         return data;
     }
 
+    bool TokuFTRecoveryUnit::hasSnapshot() const {
+        return _txn.txn() != NULL;
+    }
+
     bool TokuFTRecoveryUnit::_opCtxIsWriting(OperationContext *opCtx) {
         const Locker *state = opCtx->lockState();
         const LockMode mode =
@@ -148,7 +152,7 @@ namespace mongo {
         if (_txn.is_read_only() && _opCtxIsWriting(opCtx)) {
             _txn = ftcxx::DBTxn();
         }
-        if (_txn.txn() == NULL) {
+        if (!hasSnapshot()) {
             // No txn exists yet, create one on-demand.
             // If locked for write, get a serializable txn, otherwise get a read-only one.
             int flags;
