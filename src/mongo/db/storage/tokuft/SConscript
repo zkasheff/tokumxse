@@ -20,6 +20,7 @@ if has_option("tokuft"):
     env.Library(
         target= 'storage_tokuft_base',
         source= [
+            'tokuft_disk_format.cpp',
             'tokuft_engine.cpp',
             'tokuft_errors.cpp',
             'tokuft_dictionary.cpp',

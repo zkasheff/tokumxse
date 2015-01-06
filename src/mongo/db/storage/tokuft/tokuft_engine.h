@@ -103,8 +103,11 @@ namespace mongo {
     private:
         static TokuFTDictionaryOptions _createOptions(const BSONObj& options, bool isRecordStore);
 
+        void _checkAndUpgradeDiskFormatVersion();
+
         ftcxx::DBEnv _env;
         scoped_ptr<KVDictionary> _metadataDict;
+        scoped_ptr<KVDictionary> _internalMetadataDict;
     };
 
 } // namespace mongo
