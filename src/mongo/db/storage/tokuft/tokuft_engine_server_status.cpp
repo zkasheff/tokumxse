@@ -30,10 +30,9 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
-#include "mongo/pch.h"
-
 #include <stack>
 
+#include <boost/scoped_array.hpp>
 #include <boost/static_assert.hpp>
 
 #include <db.h>
@@ -185,7 +184,7 @@ namespace mongo {
         FractalTreeEngineStatus(ftcxx::DBEnv& env) {
             uint64_t max_rows = env.get_engine_status_num_rows();
 
-            scoped_array<TOKU_ENGINE_STATUS_ROW_S> rows(new TOKU_ENGINE_STATUS_ROW_S[max_rows]);
+            boost::scoped_array<TOKU_ENGINE_STATUS_ROW_S> rows(new TOKU_ENGINE_STATUS_ROW_S[max_rows]);
             uint64_t num_rows;
             uint64_t panic;
             std::string panic_string;

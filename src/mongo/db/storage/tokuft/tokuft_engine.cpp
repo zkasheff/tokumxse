@@ -30,6 +30,8 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/operation_context.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
@@ -64,7 +66,7 @@ namespace mongo {
         static int tokuft_update(const ftcxx::Slice &desc,
                                  const ftcxx::Slice &key, const ftcxx::Slice &oldVal,
                                  const ftcxx::Slice &extra, ftcxx::SetvalFunc setval) {
-            scoped_ptr<KVUpdateMessage> message(KVUpdateMessage::fromSerialized(ftslice2slice(extra)));
+            boost::scoped_ptr<KVUpdateMessage> message(KVUpdateMessage::fromSerialized(ftslice2slice(extra)));
             Slice kvOldVal = ftslice2slice(oldVal);
             Slice kvNewVal;
             Status status = message->apply(kvOldVal, kvNewVal);

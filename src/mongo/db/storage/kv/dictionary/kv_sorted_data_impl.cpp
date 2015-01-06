@@ -31,6 +31,8 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"

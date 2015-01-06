@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/storage/kv/dictionary/kv_engine_impl.h"
 
 #include <ftcxx/db_env.hpp>
@@ -106,8 +108,8 @@ namespace mongo {
         void _checkAndUpgradeDiskFormatVersion();
 
         ftcxx::DBEnv _env;
-        scoped_ptr<KVDictionary> _metadataDict;
-        scoped_ptr<KVDictionary> _internalMetadataDict;
+        boost::scoped_ptr<KVDictionary> _metadataDict;
+        boost::scoped_ptr<KVDictionary> _internalMetadataDict;
     };
 
 } // namespace mongo

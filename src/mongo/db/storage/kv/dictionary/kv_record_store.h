@@ -33,6 +33,8 @@
 
 #include <string>
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/storage/capped_callback.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/record_store.h"

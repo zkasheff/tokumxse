@@ -29,6 +29,8 @@
 *    it in the license file.
 */
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -178,7 +180,7 @@ namespace mongo {
         }
 
         RecordId lowestInvisible = _idTracker->lowestInvisible();
-        for (scoped_ptr<RecordIterator> iter(getIterator(txn, startingPosition, CollectionScanParams::BACKWARD));
+        for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn, startingPosition, CollectionScanParams::BACKWARD));
              !iter->isEOF(); iter->getNext()) {
             if (iter->curr() <= startingPosition && iter->curr() < lowestInvisible) {
                 return iter->curr();

@@ -31,6 +31,8 @@
 
 #pragma once
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
 #include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
 
@@ -106,7 +108,7 @@ namespace mongo {
 
         const bool _engineSupportsDocLocking;
         const bool _isOplog;
-        scoped_ptr<VisibleIdTracker> _idTracker;
+        boost::scoped_ptr<VisibleIdTracker> _idTracker;
     };
 
 } // namespace mongo

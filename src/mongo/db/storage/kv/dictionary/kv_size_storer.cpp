@@ -32,6 +32,7 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include <boost/date_time/posix_time/posix_time_types.hpp>
+#include <boost/scoped_ptr.hpp>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
@@ -78,7 +79,7 @@ namespace mongo {
     }
 
     void KVSizeStorer::syncThread(RecoveryUnit *ru) {
-        scoped_ptr<OperationContext> opCtx(new OperationContextNoop(ru));
+        boost::scoped_ptr<OperationContext> opCtx(new OperationContextNoop(ru));
 
         while (_syncRunning) {
             {
@@ -155,7 +156,7 @@ namespace mongo {
 
         Map m;
         {
-            for (scoped_ptr<KVDictionary::Cursor> cur(_metadataDict->getCursor(opCtx));
+            for (boost::scoped_ptr<KVDictionary::Cursor> cur(_metadataDict->getCursor(opCtx));
                  cur->ok(); cur->advance(opCtx)) {
                 const std::string key(cur->currKey().data(), cur->currKey().size());
                 BSONObj data(cur->currVal().data());

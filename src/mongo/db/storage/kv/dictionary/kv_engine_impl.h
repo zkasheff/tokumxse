@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include <boost/scoped_ptr.hpp>
 #include <boost/thread/mutex.hpp>
 
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
@@ -49,7 +50,7 @@ namespace mongo {
      * recovery unit) and nothing more.
      */
     class KVEngineImpl : public KVEngine {
-        scoped_ptr<KVSizeStorer> _sizeStorer;
+        boost::scoped_ptr<KVSizeStorer> _sizeStorer;
 
     public:
         virtual ~KVEngineImpl() { }

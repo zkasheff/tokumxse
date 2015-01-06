@@ -28,8 +28,6 @@
  *    it in the license file.
  */
 
-#include "mongo/pch.h"
-
 #include "mongo/base/error_codes.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/storage/tokuft/tokuft_errors.h"

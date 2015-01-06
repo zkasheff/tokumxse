@@ -33,6 +33,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <boost/scoped_ptr.hpp>
 #include <boost/static_assert.hpp>
 
 #include "mongo/db/catalog/collection_options.h"

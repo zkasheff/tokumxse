@@ -31,6 +31,8 @@
 #include <algorithm>
 #include <vector>
 
+#include <boost/scoped_ptr.hpp>
+
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_test_harness.h"
 #include "mongo/db/storage/kv/slice.h"
