@@ -208,6 +208,9 @@ if (GetOption("allocator") == "tcmalloc"):
             LIBDEPS=[
                 'gperftools-2.2/tcmalloc_minimal',
             ])
+elif (GetOption("allocator") == "jemalloc"):
+    gperftoolsEnv = env.Clone()
+    gperftoolsEnv.Append(SYSLIBDEPS=['jemalloc_pic'])
 
 gperftoolsEnv.Library(
     target="shim_allocator",

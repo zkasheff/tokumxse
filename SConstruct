@@ -2058,6 +2058,8 @@ def doConfigure(myenv):
             print ("--heapcheck does not work with the tcmalloc embedded in the mongodb source "
                    "tree.  Use --use-system-tcmalloc.")
             Exit(1)
+    elif get_option('allocator') == 'jemalloc':
+        pass
     elif get_option('allocator') == 'system':
         pass
     else:
