@@ -31,8 +31,10 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include "mongo/db/operation_context.h"
+#include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
+#include "mongo/db/storage/tokuft/tokuft_disk_format.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_global_options.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
@@ -133,7 +135,7 @@ namespace mongo {
                         }
                         BSONObjBuilder rowLock(locks.subobjStart());
                         StringData indexName(getIndexName(db));
-                        bool isMetadata = indexName == "tokuft.metadata";
+                        bool isMetadata = indexName == "tokuft.metadata" || indexName == "tokuft-internal.metadata";
                         bool isRecordStore = indexName.startsWith("collection");
                         rowLock.append("index", indexName);
                         BSONArrayBuilder bounds(rowLock.subarrayStart("bounds"));
@@ -164,7 +166,7 @@ namespace mongo {
             try {
                 BSONObjBuilder status;
                 StringData indexName(getIndexName(db));
-                bool isMetadata = indexName == "tokuft.metadata";
+                bool isMetadata = indexName == "tokuft.metadata" || indexName == "tokuft-internal.metadata";
                 bool isRecordStore = indexName.startsWith("collection");
                 status.append("index", indexName);
                 status.appendNumber("requestingTxnid", requestingTxnid);
@@ -198,7 +200,7 @@ namespace mongo {
                 }
 
                 StringData indexName(getIndexName(db));
-                bool isMetadata = indexName == "tokuft.metadata";
+                bool isMetadata = indexName == "tokuft.metadata" || indexName == "tokuft-internal.metadata";
                 bool isRecordStore = indexName.startsWith("collection");
                 if (!isMetadata && !isRecordStore && !indexName.startsWith("index")) {
                     LOG(1) << "TokuFT: lock not granted on internal dictionary \"" << indexName << "\", will not attempt to decode.";
@@ -233,7 +235,8 @@ namespace mongo {
 
     TokuFTEngine::TokuFTEngine(const std::string& path)
         : _env(nullptr),
-          _metadataDict(nullptr)
+          _metadataDict(nullptr),
+          _internalMetadataDict(nullptr)
     {
         const TokuFTEngineOptions& engineOptions = tokuftGlobalOptions.engineOptions;
 
@@ -274,9 +277,15 @@ namespace mongo {
                .open(path.c_str(), env_flags, env_mode);
 
         ftcxx::DBTxn txn(_env);
-        _metadataDict.reset(new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp(),
-                                                 tokuftGlobalOptions.collectionOptions));
+        _metadataDict.reset(
+            new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp(),
+                                 tokuftGlobalOptions.collectionOptions));
+        _internalMetadataDict.reset(
+            new TokuFTDictionary(_env, txn, "tokuft-internal.metadata", KVDictionary::Comparator::useMemcmp(),
+                                 tokuftGlobalOptions.collectionOptions));
         txn.commit();
+
+        _checkAndUpgradeDiskFormatVersion();
     }
 
     TokuFTEngine::~TokuFTEngine() {}
@@ -286,6 +295,7 @@ namespace mongo {
 
         LOG(1) << "TokuFT: shutdown";
 
+        _internalMetadataDict.reset();
         _metadataDict.reset();
         _env.close();
     }
@@ -298,6 +308,25 @@ namespace mongo {
 
     RecoveryUnit *TokuFTEngine::newRecoveryUnit() {
         return new TokuFTRecoveryUnit(_env);
+    }
+
+    void TokuFTEngine::_checkAndUpgradeDiskFormatVersion() {
+        OperationContextNoop opCtx(new TokuFTRecoveryUnit(_env));
+        WriteUnitOfWork wuow(&opCtx);
+
+        TokuFTDiskFormatVersion diskFormatVersion(_internalMetadataDict.get());
+        Status s = diskFormatVersion.initialize(&opCtx);
+        if (!s.isOK()) {
+            severe() << "TokuFT: While checking disk format version, got error " << s;
+            fassertFailed(28603);
+        }
+        s = diskFormatVersion.upgradeToCurrent(&opCtx);
+        if (!s.isOK()) {
+            severe() << "TokuFT: While upgrading disk format version, got error " << s;
+            fassertFailed(28604);
+        }
+
+        wuow.commit();
     }
 
     TokuFTDictionaryOptions TokuFTEngine::_createOptions(const BSONObj& options, bool isRecordStore) {
@@ -390,6 +419,9 @@ namespace mongo {
             }
 
             if (filename == "tokuft.metadata") {
+                continue;
+            }
+            if (filename == "tokuft-internal.metadata") {
                 continue;
             }
 
