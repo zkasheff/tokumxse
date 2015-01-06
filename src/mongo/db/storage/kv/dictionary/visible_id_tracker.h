@@ -53,6 +53,8 @@ namespace mongo {
 
         virtual RecordId lowestInvisible() const = 0;
 
+        virtual void setRecoveryUnitRestriction(KVRecoveryUnit *ru) const = 0;
+
         virtual void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const = 0;
     };
 
@@ -61,6 +63,7 @@ namespace mongo {
         bool canReadId(const RecordId &) const { return true; }
         void addUncommittedId(OperationContext *, const RecordId &) {}
         RecordId lowestInvisible() const { return RecordId::max(); }
+        void setRecoveryUnitRestriction(KVRecoveryUnit *ru) const {}
         void setIteratorRestriction(KVRecoveryUnit *, KVRecordStore::KVRecordIterator *) const {}
     };
 
@@ -98,6 +101,8 @@ namespace mongo {
                     : *_uncommittedIds.begin());
         }
 
+        virtual void setRecoveryUnitRestriction(KVRecoveryUnit *ru) const {}
+
         virtual void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const {
             iter->setIdTracker(this);
         }
@@ -131,12 +136,15 @@ namespace mongo {
 
     class OplogIdTracker : public CappedIdTracker {
     public:
-        void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const {
-            CappedIdTracker::setIteratorRestriction(ru, iter);
-
+        void setRecoveryUnitRestriction(KVRecoveryUnit *ru) const {
             if (!ru->hasSnapshot() || ru->getLowestInvisible().isNull()) {
                 ru->setLowestInvisible(lowestInvisible());
             }
+        }
+
+        void setIteratorRestriction(KVRecoveryUnit *ru, KVRecordStore::KVRecordIterator *iter) const {
+            CappedIdTracker::setIteratorRestriction(ru, iter);
+            invariant(!ru->getLowestInvisible().isNull());
             iter->setLowestInvisible(ru->getLowestInvisible());
         }
     };

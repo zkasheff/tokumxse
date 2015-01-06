@@ -204,16 +204,23 @@ namespace mongo {
     RecordIterator* KVRecordStoreCapped::getIterator(OperationContext* txn,
                                                      const RecordId& start,
                                                      const CollectionScanParams::Direction& dir) const {
-        auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
         if (_engineSupportsDocLocking && dir == CollectionScanParams::FORWARD) {
             KVRecoveryUnit *ru = dynamic_cast<KVRecoveryUnit *>(txn->recoveryUnit());
             invariant(ru);
+            // Must set this before we call KVRecordStore::getIterator because that will create a
+            // snapshot.
+            _idTracker->setRecoveryUnitRestriction(ru);
+
+            auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
+
             KVRecordIterator *kvIter = dynamic_cast<KVRecordIterator *>(iter.get());
             invariant(kvIter);
-
             _idTracker->setIteratorRestriction(ru, kvIter);
+
+            return iter.release();
+        } else {
+            return KVRecordStore::getIterator(txn, start, dir);
         }
-        return iter.release();
     }
 
 } // namespace mongo
