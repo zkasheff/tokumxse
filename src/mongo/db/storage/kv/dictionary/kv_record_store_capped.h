@@ -32,6 +32,7 @@
 #pragma once
 
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
+#include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
 
 namespace mongo {
 
@@ -47,7 +48,8 @@ namespace mongo {
                              const StringData& ns,
                              const StringData& ident,
                              const CollectionOptions& options,
-                             KVSizeStorer *sizeStorer);
+                             KVSizeStorer *sizeStorer,
+                             bool engineSupportsDocLocking);
 
         virtual ~KVRecordStoreCapped() { }
 
@@ -61,6 +63,11 @@ namespace mongo {
                                                   bool enforceQuota );
 
         virtual void deleteRecord( OperationContext* txn, const RecordId& dl );
+
+        virtual RecordIterator* getIterator( OperationContext* txn,
+                                             const RecordId& start = RecordId(),
+                                             const CollectionScanParams::Direction& dir =
+                                             CollectionScanParams::FORWARD ) const;
 
         virtual void appendCustomStats( OperationContext* txn,
                                         BSONObjBuilder* result,
@@ -81,6 +88,12 @@ namespace mongo {
 
         virtual bool cappedMaxSize() const { return _cappedMaxSize; }
 
+        virtual boost::optional<RecordId> oplogStartHack(OperationContext* txn,
+                                                         const RecordId& startingPosition) const;
+
+        virtual Status oplogDiskLocRegister(OperationContext* txn,
+                                            const OpTime& opTime);
+
     private:
         bool needsDelete(OperationContext *txn) const;
 
@@ -90,6 +103,10 @@ namespace mongo {
         const int64_t _cappedMaxDocs;
         CappedDocumentDeleteCallback* _cappedDeleteCallback;
         boost::mutex _cappedDeleteMutex;
+
+        const bool _engineSupportsDocLocking;
+        const bool _isOplog;
+        scoped_ptr<VisibleIdTracker> _idTracker;
     };
 
 } // namespace mongo

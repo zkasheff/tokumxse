@@ -85,7 +85,7 @@ namespace mongo {
                                     : NULL);
         // We separated the implementations of capped / non-capped record stores for readability.
         if (options.capped) {
-            rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options, sizeStorer));
+            rs.reset(new KVRecordStoreCapped(db.release(), opCtx, ns, ident, options, sizeStorer, supportsDocLocking()));
         } else {
             rs.reset(new KVRecordStore(db.release(), opCtx, ns, ident, options, sizeStorer));
         }

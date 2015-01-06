@@ -43,6 +43,7 @@ namespace mongo {
 
     class CollectionOptions;
     class KVSizeStorer;
+    class VisibleIdTracker;
 
     class KVRecordStore : public RecordStore {
     public:
@@ -63,7 +64,7 @@ namespace mongo {
                        const StringData& ns,
                        const StringData& ident,
                        const CollectionOptions& options,
-                       KVSizeStorer *sizeStorer );
+                       KVSizeStorer *sizeStorer);
 
         virtual ~KVRecordStore();
 
@@ -176,12 +177,14 @@ namespace mongo {
 
         void undoUpdateStats(long long nrDelta, long long dsDelta);
 
-    protected:
         class KVRecordIterator : public RecordIterator {
             KVDictionary *_db;
             const CollectionScanParams::Direction _dir;
             RecordId _savedLoc;
             Slice _savedVal;
+
+            RecordId _lowestInvisible;
+            const VisibleIdTracker *_idTracker;
 
             // May change due to saveState() / restoreState()
             OperationContext *_txn;
@@ -210,7 +213,18 @@ namespace mongo {
             bool restoreState(OperationContext* txn);
 
             RecordData dataFor(const RecordId& loc) const;
+
+            void setLowestInvisible(const RecordId& id) {
+                _lowestInvisible = id;
+            }
+
+            void setIdTracker(const VisibleIdTracker *tracker) {
+                _idTracker = tracker;
+            }
         };
+
+    protected:
+        Status _insertRecord(OperationContext *txn, const RecordId &id, const Slice &value);
 
         void _updateStats(OperationContext *txn, long long nrDelta, long long dsDelta);
 

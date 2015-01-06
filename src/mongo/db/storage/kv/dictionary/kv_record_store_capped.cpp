@@ -29,9 +29,12 @@
 *    it in the license file.
 */
 
+#include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_capped.h"
+#include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
+#include "mongo/db/storage/oplog_hack.h"
 
 namespace mongo {
 
@@ -40,12 +43,20 @@ namespace mongo {
                                               const StringData& ns,
                                               const StringData& ident,
                                               const CollectionOptions& options,
-                                              KVSizeStorer *sizeStorer) :
-        KVRecordStore(db, opCtx, ns, ident, options, sizeStorer),
-        _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
-        _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
-        _cappedDeleteCallback(NULL) {
-    }
+                                              KVSizeStorer *sizeStorer,
+                                              bool engineSupportsDocLocking)
+        : KVRecordStore(db, opCtx, ns, ident, options, sizeStorer),
+          _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
+          _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
+          _cappedDeleteCallback(NULL),
+          _engineSupportsDocLocking(engineSupportsDocLocking),
+          _isOplog(NamespaceString::oplog(ns)),
+          _idTracker(_engineSupportsDocLocking
+                     ? (_isOplog
+                        ? static_cast<VisibleIdTracker *>(new OplogIdTracker())
+                        : static_cast<VisibleIdTracker *>(new CappedIdTracker()))
+                     : static_cast<VisibleIdTracker *>(new NoopIdTracker()))
+    {}
 
     bool KVRecordStoreCapped::needsDelete(OperationContext* txn) const {
         if (dataSize(txn) > _cappedMaxSize) {
@@ -92,14 +103,31 @@ namespace mongo {
                                        "object to insert exceeds cappedMaxSize");
         }
 
-        // insert using the regular KVRecordStore insert implementation..
-        const StatusWith<RecordId> status =
-            KVRecordStore::insertRecord(txn, data, len, enforceQuota);
+        StatusWith<RecordId> id(Status::OK());
+        if (_isOplog) {
+            id = oploghack::extractKey(data, len);
+            if (!id.isOK()) {
+                return id;
+            }
+
+            Status s = _insertRecord(txn, id.getValue(), Slice(data, len));
+            if (!s.isOK()) {
+                return StatusWith<RecordId>(s);
+            }
+        } else {
+            // insert using the regular KVRecordStore insert implementation..
+            id = KVRecordStore::insertRecord(txn, data, len, enforceQuota);
+            if (!id.isOK()) {
+                return id;
+            }
+        }
+
+        _idTracker->addUncommittedId(txn, id.getValue());
 
         // ..then delete old data as needed
         deleteAsNeeded(txn);
 
-        return status;
+        return id;
     }
 
     StatusWith<RecordId> KVRecordStoreCapped::insertRecord( OperationContext* txn,
@@ -124,24 +152,74 @@ namespace mongo {
                                                  double scale ) const {
         result->append("capped", true);
         result->appendIntOrLL("max", _cappedMaxDocs);
-        result->appendIntOrLL("maxSize", _cappedMaxSize);
+        result->appendIntOrLL("maxSize", _cappedMaxSize / scale);
         KVRecordStore::appendCustomStats(txn, result, scale);
     }
 
     void KVRecordStoreCapped::temp_cappedTruncateAfter(OperationContext* txn,
                                                        RecordId end,
                                                        bool inclusive) {
+        WriteUnitOfWork wu( txn );
         // Not very efficient, but it should only be used by tests.
-        for (boost::scoped_ptr<RecordIterator> iter(
-                 getIterator(txn, end, CollectionScanParams::FORWARD));
-             !iter->isEOF(); ) {
+        for (boost::scoped_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, end)); !iter->isEOF(); ) {
             RecordId loc = iter->getNext();
             if (!inclusive && loc == end) {
                 continue;
             }
-            WriteUnitOfWork wu( txn );
             deleteRecord(txn, loc);
-            wu.commit();
+        }
+        wu.commit();
+    }
+
+    boost::optional<RecordId> KVRecordStoreCapped::oplogStartHack(OperationContext* txn,
+                                                                  const RecordId& startingPosition) const {
+        if (!_engineSupportsDocLocking) {
+            return boost::none;
+        }
+
+        RecordId lowestInvisible = _idTracker->lowestInvisible();
+        for (scoped_ptr<RecordIterator> iter(getIterator(txn, startingPosition, CollectionScanParams::BACKWARD));
+             !iter->isEOF(); iter->getNext()) {
+            if (iter->curr() <= startingPosition && iter->curr() < lowestInvisible) {
+                return iter->curr();
+            }
+        }
+        return boost::none;
+    }
+
+    Status KVRecordStoreCapped::oplogDiskLocRegister(OperationContext* txn,
+                                                     const OpTime& opTime) {
+        if (!_engineSupportsDocLocking) {
+            return Status::OK();
+        }
+
+        StatusWith<RecordId> loc = oploghack::keyForOptime( opTime );
+        if ( !loc.isOK() )
+            return loc.getStatus();
+
+        _idTracker->addUncommittedId(txn, loc.getValue());
+        return Status::OK();
+    }
+
+    RecordIterator* KVRecordStoreCapped::getIterator(OperationContext* txn,
+                                                     const RecordId& start,
+                                                     const CollectionScanParams::Direction& dir) const {
+        if (_engineSupportsDocLocking && dir == CollectionScanParams::FORWARD) {
+            KVRecoveryUnit *ru = dynamic_cast<KVRecoveryUnit *>(txn->recoveryUnit());
+            invariant(ru);
+            // Must set this before we call KVRecordStore::getIterator because that will create a
+            // snapshot.
+            _idTracker->setRecoveryUnitRestriction(ru);
+
+            auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
+
+            KVRecordIterator *kvIter = dynamic_cast<KVRecordIterator *>(iter.get());
+            invariant(kvIter);
+            _idTracker->setIteratorRestriction(ru, kvIter);
+
+            return iter.release();
+        } else {
+            return KVRecordStore::getIterator(txn, start, dir);
         }
     }
 
