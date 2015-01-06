@@ -30,6 +30,12 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include <ios>
+#include <sstream>
+#include <string>
+
+#include <toku_config.h>
+
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/bson/bson_field.h"
@@ -42,6 +48,16 @@
 #include "mongo/util/version.h"
 
 namespace mongo {
+
+    namespace {
+
+        std::string tokuftGitVersion() {
+            std::stringstream ss;
+            ss << std::hex << static_cast<unsigned long long>(TOKUDB_REVISION);
+            return ss.str();
+        }
+
+    }
 
     const Slice TokuFTDiskFormatVersion::versionInfoKey("tokuftDiskFormatVersionInfo");
     const BSONField<int> TokuFTDiskFormatVersion::originalVersionField("originalVersion");
@@ -70,7 +86,7 @@ namespace mongo {
                            upgradedAtField(jsTime()) <<
                            upgradedByField(BSON(mongodbVersionField(versionString) <<
                                                 mongodbGitField(gitVersion()) <<
-                                                tokuftGitField("todo") <<
+                                                tokuftGitField(tokuftGitVersion()) <<
                                                 sysInfoField(sysInfo())))));
 
             BSONObj versionObj = BSON(currentVersionField(DISK_VERSION_CURRENT) <<
@@ -168,7 +184,7 @@ namespace mongo {
                        upgradedAtField(jsTime()) <<
                        upgradedByField(BSON(mongodbVersionField(versionString) <<
                                             mongodbGitField(gitVersion()) <<
-                                            tokuftGitField("todo") <<
+                                            tokuftGitField(tokuftGitVersion()) <<
                                             sysInfoField(sysInfo())))));
 
         long long originalVersion;

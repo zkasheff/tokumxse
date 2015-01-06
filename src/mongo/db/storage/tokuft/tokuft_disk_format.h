@@ -63,7 +63,7 @@ namespace mongo {
         static const BSONField<BSONObj> upgradedByField;
         static const BSONField<string> mongodbVersionField;
         static const BSONField<string> mongodbGitField;
-        static const BSONField<string> tokuftGitField;  // TODO
+        static const BSONField<string> tokuftGitField;
         static const BSONField<string> sysInfoField;
 
         Status upgradeToVersion(OperationContext *opCtx, VersionID targetVersion);
