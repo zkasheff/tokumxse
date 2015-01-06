@@ -65,7 +65,8 @@ namespace mongo {
     class TokuFTFactory : public StorageEngine::Factory {
     public:
         virtual ~TokuFTFactory() { }
-        virtual StorageEngine *create(const StorageGlobalParams &params) const {
+        virtual StorageEngine *create(const StorageGlobalParams &params,
+                                      const StorageEngineLockFile &lockFile) const {
             return new TokuFTStorageEngine(params.dbpath, params.dur);
         }
         virtual StringData getCanonicalName() const {

@@ -54,7 +54,8 @@ namespace mongo {
         class KVHeapEngineFactory : public StorageEngine::Factory {
         public:
             virtual ~KVHeapEngineFactory() { }
-            virtual StorageEngine* create(const StorageGlobalParams& params) const {
+            virtual StorageEngine* create(const StorageGlobalParams& params,
+                                          const StorageEngineLockFile& lockFile) const {
                 return new KVHeapStorageEngine();
             }
             virtual StringData getCanonicalName() const {
