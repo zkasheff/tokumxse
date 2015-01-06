@@ -289,7 +289,14 @@ namespace mongo {
             invariant(status.code() == ErrorCodes::NoSuchKey);
         }
 
-        return _db->insert(txn, key.key(), value);
+        Status s = _db->insert(txn, key.key(), value);
+        if (!s.isOK()) {
+            return s;
+        }
+
+        _updateStats(txn, 1, value.size());
+
+        return s;
     }
 
     StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
@@ -303,8 +310,6 @@ namespace mongo {
         if (!status.isOK()) {
             return StatusWith<RecordId>(status);
         }
-
-        _updateStats(txn, 1, value.size());
 
         return StatusWith<RecordId>(id);
     }
