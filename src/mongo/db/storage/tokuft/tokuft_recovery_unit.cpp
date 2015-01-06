@@ -29,6 +29,7 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
+#include "mongo/db/concurrency/locker_noop.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/db/storage/tokuft/tokuft_global_options.h"
@@ -138,8 +139,9 @@ namespace mongo {
 
     bool TokuFTRecoveryUnit::_opCtxIsWriting(OperationContext *opCtx) {
         const Locker *state = opCtx->lockState();
+        invariant(state != NULL);
         const LockMode mode =
-                (state == NULL
+                (dynamic_cast<const LockerNoop *>(state) != NULL
                  // Only for c++ tests, assume tests can do whatever without proper locks.
                  ? MODE_X
                  // We don't have the ns so just check the global resource, generally it should have
