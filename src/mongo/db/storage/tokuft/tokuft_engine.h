@@ -62,16 +62,16 @@ namespace mongo {
                                               bool isRecordStore,
                                               bool mayCreate = false);
 
-        virtual Status dropKVDictionary( OperationContext* opCtx,
-                                          const StringData& ident );
+        virtual Status dropKVDictionary(OperationContext* opCtx,
+                                        const StringData& ident);
 
-        virtual int64_t getIdentSize( OperationContext* opCtx,
-                              const StringData& ident ) {
+        virtual int64_t getIdentSize(OperationContext* opCtx,
+                                     const StringData& ident) {
             return 1;
         }
 
-        virtual Status repairIdent( OperationContext* opCtx,
-                            const StringData& ident ) {
+        virtual Status repairIdent(OperationContext* opCtx,
+                                   const StringData& ident) {
             return Status::OK();
         }
 

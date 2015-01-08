@@ -28,7 +28,7 @@
  *    it in the license file.
  */
 
-#include "mongo/db/storage/index_entry_comparison.h"
+#include "mongo/base/status.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/slice.h"
