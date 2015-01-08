@@ -34,6 +34,8 @@
 #include <algorithm>
 #include <string>
 
+#include "mongo/bson/bsonobj.h"
+#include "mongo/db/storage/key_string.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/shared_buffer.h"
 
@@ -174,6 +176,21 @@ namespace mongo {
         const char *_data;
         size_t _size;
     };
+
+    template<>
+    inline Slice Slice::of<BSONObj>(const BSONObj &obj) {
+        return Slice(obj.objdata(), obj.objsize());
+    }
+
+    template<>
+    inline Slice Slice::of<KeyString>(const KeyString &ks) {
+        return Slice(ks.getBuffer(), ks.getSize());
+    }
+
+    template<>
+    inline BSONObj Slice::as<BSONObj>() const {
+        return BSONObj(data());
+    }
 
 } // namespace mongo
 
