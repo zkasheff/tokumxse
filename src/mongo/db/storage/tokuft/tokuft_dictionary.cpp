@@ -63,6 +63,7 @@ namespace mongo {
               .set_compression_method(options.compressionMethod())
               .set_fanout(options.fanout)
               .set_descriptor(slice2ftslice(cmp.serialize()))
+              .set_always_memcmp(true)
               .open(env, txn, ident.toString().c_str(), NULL,
                     DB_BTREE /* legacy flag */, DB_CREATE, 0644))
     {
