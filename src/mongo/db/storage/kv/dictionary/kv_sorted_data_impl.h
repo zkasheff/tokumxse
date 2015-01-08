@@ -34,7 +34,6 @@
 
 #include "mongo/bson/ordering.h"
 #include "mongo/db/storage/sorted_data_interface.h"
-#include "mongo/db/storage/index_entry_comparison.h"
 
 namespace mongo {
 
@@ -102,9 +101,14 @@ namespace mongo {
 
         virtual bool appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const;
 
+        // Will be used for diagnostic printing by the TokuFT KVDictionary implementation.
+        static BSONObj extractKey(const Slice &s, const Ordering &ordering);
+        static RecordId extractRecordId(const Slice &s);
+
     private:
         // The KVDictionary interface used to store index keys, which map to empty values.
         boost::scoped_ptr<KVDictionary> _db;
+        const Ordering _ordering;
     };
 
 } // namespace mongo

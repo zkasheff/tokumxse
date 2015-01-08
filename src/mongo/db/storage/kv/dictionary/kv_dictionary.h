@@ -33,7 +33,6 @@
 
 #include "mongo/base/status.h"
 #include "mongo/bson/ordering.h"
-#include "mongo/db/storage/index_entry_comparison.h"
 #include "mongo/db/storage/kv/slice.h"
 
 namespace mongo {
@@ -53,16 +52,11 @@ namespace mongo {
     class KVDictionary {
     public:
         /**
-         * Compares two binary keys in a KVDictionary. Only two possible
-         * implementations exist: one for using memcmp, another for using
-         * IndexEntryComparison (the key language for collections'
-         * indexes)
+         * Compares two binary keys in a KVDictionary. We use either an encoding of the RecordId
+         * which is memcmpable or KeyString which also is.
          */
         class Comparator {
-            Comparator(const IndexEntryComparison &cmp, bool useMemcmp)
-                : _cmp(cmp),
-                  _useMemcmp(useMemcmp)
-            {}
+            Comparator() {}
 
         public:
             /**
@@ -70,12 +64,6 @@ namespace mongo {
              * and sorts by length when keys contain a common prefix.
              */
             static Comparator useMemcmp();
-
-            /**
-             * Return a Comparator object that compres keys using an
-             * IndexEntryComparison.
-             */
-            static Comparator useIndexEntryComparison(const IndexEntryComparison &cmp);
 
             /**
              * Create a comparator from a serialized byte slice.
@@ -100,10 +88,6 @@ namespace mongo {
              * > 0 iff a > b
              */
             int operator()(const Slice &a, const Slice &b) const;
-
-        private:
-            IndexEntryComparison _cmp;
-            bool _useMemcmp;
         };
 
         virtual ~KVDictionary() { }

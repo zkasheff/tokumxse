@@ -99,28 +99,21 @@ namespace mongo {
 
     // --------
 
-    Status KVEngineImpl::createSortedDataInterface( OperationContext* opCtx,
-                                                    const StringData& ident,
-                                                    const IndexDescriptor* desc ) {
+    Status KVEngineImpl::createSortedDataInterface(OperationContext* opCtx,
+                                                   const StringData& ident,
+                                                   const IndexDescriptor* desc) {
         // Creating a sorted data impl is as simple as creating one with the given `ident'
-        //
-        // Assume the default ordering if no desc is passed (for tests)
-        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
-        IndexEntryComparison cmp(Ordering::make(keyPattern));
-        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp),
+        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
                                   options, false);
 
     }
 
-    SortedDataInterface* KVEngineImpl::getSortedDataInterface( OperationContext* opCtx,
-                                                               const StringData& ident,
-                                                               const IndexDescriptor* desc ) {
-        // Assume the default ordering if no desc is passed (for tests)
-        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
+    SortedDataInterface* KVEngineImpl::getSortedDataInterface(OperationContext* opCtx,
+                                                              const StringData& ident,
+                                                              const IndexDescriptor* desc) {
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
-        IndexEntryComparison cmp(Ordering::make(keyPattern));
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useIndexEntryComparison(cmp),
+        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
                                                   options, false));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
     }

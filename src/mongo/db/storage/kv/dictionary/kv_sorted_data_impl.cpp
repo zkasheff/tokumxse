@@ -34,58 +34,49 @@
 #include <boost/scoped_ptr.hpp>
 
 #include "mongo/db/concurrency/write_conflict_exception.h"
+#include "mongo/db/index/index_descriptor.h"
+#include "mongo/db/storage/index_entry_comparison.h"
+#include "mongo/db/storage/key_string.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/kv/slice.h"
+#include "mongo/platform/endian.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
 
 namespace mongo {
 
-    const int kTempKeyMaxSize = 1024; // Do the same as the heap implementation
-
     namespace {
 
-        /**
-         * Strips the field names from a BSON object
-         */
-        BSONObj stripFieldNames( const BSONObj& obj ) {
-            BSONObjBuilder b;
-            BSONObjIterator i( obj );
-            while ( i.more() ) {
-                BSONElement e = i.next();
-                b.appendAs( e, "" );
+        const int kTempKeyMaxSize = 1024; // this goes away with SERVER-3372
+
+        Status checkKeySize(const BSONObj &key) {
+            if (key.objsize() >= kTempKeyMaxSize) {
+                StringBuilder sb;
+                sb << "KVSortedDataImpl::insert(): key too large to index, failing "
+                   << key.objsize() << ' ' << key;
+                return Status(ErrorCodes::KeyTooLong, sb.str());
             }
-            return b.obj();
+            return Status::OK();
         }
 
-        /**
-         * Constructs a string containing the bytes of key followed by the bytes of loc.
-         *
-         * @param removeFieldNames true if the field names in key should be replaced with empty
-         * strings, and false otherwise. Useful because field names are not necessary in an index
-         * key, because the ordering of the fields is already known.
-         */
-        Slice makeString( const BSONObj& key, const RecordId loc, bool removeFieldNames = true ) {
-            const BSONObj finalKey = removeFieldNames ? stripFieldNames( key ) : key;
-
-            Slice s(finalKey.objsize() + sizeof loc);
-
-            std::copy(finalKey.objdata(), finalKey.objdata() + finalKey.objsize(), s.mutableData());
-            RecordId *lp = reinterpret_cast<RecordId *>(s.mutableData() + finalKey.objsize());
-            *lp = loc;
-
-            return s;
+        bool hasFieldNames(const BSONObj& obj) {
+            BSONForEach(e, obj) {
+                if (e.fieldName()[0])
+                    return true;
+            }
+            return false;
         }
 
-        /**
-         * Constructs an IndexKeyEntry from a slice containing the bytes of a BSONObject followed
-         * by the bytes of a RecordId
-         */
-        IndexKeyEntry makeIndexKeyEntry( const Slice& slice ) {
-            BSONObj key = BSONObj( slice.data() );
-            RecordId loc = *reinterpret_cast<const RecordId*>( slice.data() + key.objsize() );
-            return IndexKeyEntry( key, loc );
+        BSONObj stripFieldNames(const BSONObj& query) {
+            if (!hasFieldNames(query))
+                return query;
+
+            BSONObjBuilder bb;
+            BSONForEach(e, query) {
+                bb.appendAs(e, StringData());
+            }
+            return bb.obj();
         }
 
         /**
@@ -101,11 +92,13 @@ namespace mongo {
 
     }  // namespace
 
-    KVSortedDataImpl::KVSortedDataImpl( KVDictionary* db,
-                                        OperationContext* opCtx,
-                                        const IndexDescriptor* desc) :
-        _db( db ) {
-        invariant( _db );
+    KVSortedDataImpl::KVSortedDataImpl(KVDictionary* db,
+                                       OperationContext* opCtx,
+                                       const IndexDescriptor* desc)
+        : _db(db),
+          _ordering(Ordering::make(desc ? desc->keyPattern() : BSONObj()))
+    {
+        invariant(_db);
     }
 
     Status KVSortedDataBuilderImpl::addKey(const BSONObj& key, const RecordId& loc) {
@@ -117,35 +110,46 @@ namespace mongo {
       return new KVSortedDataBuilderImpl(this, txn, dupsAllowed);
     }
 
+    BSONObj KVSortedDataImpl::extractKey(const Slice &s, const Ordering &ordering) {
+        return KeyString::toBson(s.data(), s.size(), ordering);
+    }
+
+    RecordId KVSortedDataImpl::extractRecordId(const Slice &s) {
+        // KeyString really should have this in its API.
+        const uint64_t *bigRepr = reinterpret_cast<const uint64_t *>(s.data() + s.size() - sizeof(*bigRepr));
+        return RecordId(static_cast<int64_t>(endian::bigToNative(*bigRepr)));
+    }
+
     Status KVSortedDataImpl::insert(OperationContext* txn,
                                     const BSONObj& key,
                                     const RecordId& loc,
                                     bool dupsAllowed) {
-        if (key.objsize() >= kTempKeyMaxSize) {
-            const string msg = mongoutils::str::stream()
-                               << "KVSortedDataImpl::insert() key too large to index, failing "
-                               << key.objsize() << ' ' << key;
-            return Status(ErrorCodes::KeyTooLong, msg);
+        invariant(loc.isNormal());
+        dassert(!hasFieldNames(key));
+
+        Status s = checkKeySize(key);
+        if (!s.isOK()) {
+            return s;
         }
 
         try {
             if (!dupsAllowed) {
-                Status status = (_db->supportsDupKeyCheck()
-                                 ? _db->dupKeyCheck(txn,
-                                                    makeString(key, RecordId::min(), false),
-                                                    makeString(key, RecordId::max(), false),
-                                                    Slice::of(loc))
-                                 : dupKeyCheck(txn, key, loc));
-                if (status == ErrorCodes::DuplicateKey) {
+                s = (_db->supportsDupKeyCheck()
+                     ? _db->dupKeyCheck(txn,
+                                        Slice::of(KeyString::make(key, _ordering, RecordId::min())),
+                                        Slice::of(KeyString::make(key, _ordering, RecordId::max())),
+                                        Slice::of(loc))
+                     : dupKeyCheck(txn, key, loc));
+                if (s == ErrorCodes::DuplicateKey) {
                     // Adjust the message to include the key.
                     return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
                 }
-                if (!status.isOK()) {
-                    return status;
+                if (!s.isOK()) {
+                    return s;
                 }
             }
 
-            _db->insert(txn, makeString(key, loc), Slice());
+            s = _db->insert(txn, Slice::of(KeyString::make(key, _ordering, loc)), Slice());
         } catch (WriteConflictException) {
             if (!dupsAllowed) {
                 // If we see a WriteConflictException on a unique index, according to
@@ -156,14 +160,16 @@ namespace mongo {
             throw;
         }
 
-        return Status::OK();
+        return s;
     }
 
     void KVSortedDataImpl::unindex(OperationContext* txn,
                                    const BSONObj& key,
                                    const RecordId& loc,
                                    bool dupsAllowed) {
-        _db->remove(txn, makeString(key, loc));
+        invariant(loc.isNormal());
+        dassert(!hasFieldNames(key));
+        _db->remove(txn, Slice::of(KeyString::make(key, _ordering, loc)));
     }
 
     Status KVSortedDataImpl::dupKeyCheck(OperationContext* txn,
@@ -230,6 +236,7 @@ namespace mongo {
         KVDictionary *_db;
         const int _dir;
         OperationContext *_txn;
+        const Ordering &_ordering;
 
         mutable boost::scoped_ptr<KVDictionary::Cursor> _cursor;
         BSONObj _savedKey;
@@ -248,15 +255,16 @@ namespace mongo {
         }
 
         bool _locate(const BSONObj &key, const RecordId &loc) {
-            _cursor.reset(_db->getCursor(_txn, makeString(key, loc, false), _dir));
+            _cursor.reset(_db->getCursor(_txn, Slice::of(KeyString::make(key, _ordering, loc)), _dir));
             return !isEOF() && loc == getRecordId() && key == getKey();
         }
 
     public:
-        KVSortedDataInterfaceCursor(KVDictionary *db, OperationContext *txn, int direction)
+        KVSortedDataInterfaceCursor(KVDictionary *db, OperationContext *txn, int direction, const Ordering &ordering)
             : _db(db),
               _dir(direction),
               _txn(txn),
+              _ordering(ordering),
               _cursor(),
               _savedKey(),
               _savedLoc(),
@@ -315,8 +323,7 @@ namespace mongo {
             if (isEOF()) {
                 return BSONObj();
             }
-            IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
-            return entry.key;
+            return KVSortedDataImpl::extractKey(_cursor->currKey(), _ordering);
         }
 
         RecordId getRecordId() const {
@@ -324,8 +331,7 @@ namespace mongo {
             if (isEOF()) {
                 return RecordId();
             }
-            IndexKeyEntry entry = makeIndexKeyEntry(_cursor->currKey());
-            return entry.loc;
+            return KVSortedDataImpl::extractRecordId(_cursor->currKey());
         }
 
         void advance() {
@@ -358,7 +364,7 @@ namespace mongo {
 
     SortedDataInterface::Cursor* KVSortedDataImpl::newCursor(OperationContext* txn,
                                                              int direction) const {
-        return new KVSortedDataInterfaceCursor(_db.get(), txn, direction);
+        return new KVSortedDataInterfaceCursor(_db.get(), txn, direction, _ordering);
     }
 
 } // namespace mongo

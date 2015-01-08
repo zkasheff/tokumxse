@@ -163,6 +163,13 @@ namespace mongo {
                 break;
             }
 
+            case DISK_VERSION_3: {
+                // We can't upgrade to version 3 from any previous version, since it changes the
+                // index key format.
+                invariant(false);
+                break;
+            }
+
         }
 
         Slice val;

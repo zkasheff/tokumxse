@@ -34,6 +34,7 @@
 
 #include "mongo/db/operation_context.h"
 #include "mongo/db/operation_context_noop.h"
+#include "mongo/db/storage/key_string.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_disk_format.h"
@@ -97,7 +98,8 @@ namespace mongo {
                     b.appendNumber("record_id", Slice(static_cast<char *>(leftKey->data), leftKey->size).as<uint64_t>());
                     b.doneFast();
                 } else {
-                    bounds.append(BSONObj((const char *)leftKey->data));
+                    // TODO: get the ordering down to this level and use KVSortedDataImpl::extractKey
+                    bounds.append(KeyString::toBson((const char *)leftKey->data, leftKey->size, Ordering::make(BSONObj())));
                 }
             }
 
@@ -111,7 +113,7 @@ namespace mongo {
                     b.appendNumber("record_id", Slice(static_cast<char *>(rightKey->data), rightKey->size).as<uint64_t>());
                     b.doneFast();
                 } else {
-                    bounds.append(BSONObj((const char *)rightKey->data));
+                    bounds.append(KeyString::toBson((const char *)rightKey->data, rightKey->size, Ordering::make(BSONObj())));
                 }
             }
         }
@@ -360,8 +362,8 @@ namespace mongo {
         return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, cmp, _createOptions(options, isRecordStore));
     }
 
-    Status TokuFTEngine::dropKVDictionary( OperationContext* opCtx,
-                                            const StringData& ident ) {
+    Status TokuFTEngine::dropKVDictionary(OperationContext* opCtx,
+                                          const StringData& ident) {
         invariant(ident.size() > 0);
 
         std::string identStr = ident.toString();

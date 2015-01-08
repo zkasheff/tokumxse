@@ -35,65 +35,29 @@
 
 namespace mongo {
 
-    static const IndexEntryComparison nullIEC(Ordering::make(BSONObj()));
-
-    KVDictionary::Comparator::Comparator(const Slice &serialized)
-        : _cmp(serialized.size() == 0
-               ? nullIEC
-               : serialized.as<IndexEntryComparison>()),
-           // An empty serialization means 'use memcmp'. See Comparator::serialize().
-          _useMemcmp(serialized.size() == 0)
-    {}
-
-    KVDictionary::Comparator KVDictionary::Comparator::useMemcmp() {
-        return Comparator(nullIEC, true);
+    KVDictionary::Comparator::Comparator(const Slice &serialized) {
+        invariant(serialized.size() == 0);
     }
 
-    KVDictionary::Comparator KVDictionary::Comparator::useIndexEntryComparison(const IndexEntryComparison &cmp) {
-        return Comparator(cmp, false);
+    KVDictionary::Comparator KVDictionary::Comparator::useMemcmp() {
+        return Comparator();
     }
 
     Slice KVDictionary::Comparator::serialize() const {
-        if (_useMemcmp) {
-            // Empty representation.
-            return Slice();
-        } else {
-            // We serialize the bytes that represent the IndexEntryComparison
-            return Slice::of(_cmp);
-        }
-    }
-
-    IndexKeyEntry makeIndexKeyEntry(const Slice& slice) {
-        const BSONObj key(slice.data());
-        const RecordId loc = *reinterpret_cast<const RecordId*>(slice.data() + key.objsize());
-        return IndexKeyEntry(key, loc);
+        return Slice();
     }
 
     int KVDictionary::Comparator::operator()(const Slice &a, const Slice &b) const {
-        if (_useMemcmp) {
-            // first compare by a commen prefix length using memcmp..
-            const int cmp_len = std::min(a.size(), b.size());
-            const int c = memcmp(a.data(), b.data(), cmp_len);
-            if (c != 0) {
-                return c;
-            } else {
-                // ..then compare by length
-                if (a.size() < b.size()) {
-                    return -1;
-                } else if (a.size() > b.size()) { 
-                    return 1;
-                } else {
-                    return 0;
-                }
-            }
+        const int cmp_len = std::min(a.size(), b.size());
+        const int c = memcmp(a.data(), b.data(), cmp_len);
+        if (c != 0) {
+            return c;
+        } else if (a.size() < b.size()) {
+            return -1;
+        } else if (a.size() > b.size()) { 
+            return 1;
         } else {
-            // TODO: necessary?
-            if (a.size() == 0 || b.size() == 0) {
-                return a.size() == b.size() ? 0 : ((a.size() == 0) ? -1 : 1);
-            }
-            const IndexKeyEntry lhs = makeIndexKeyEntry(a);
-            const IndexKeyEntry rhs = makeIndexKeyEntry(b);
-            return _cmp.compare(lhs, rhs);
+            return 0;
         }
     }
 
