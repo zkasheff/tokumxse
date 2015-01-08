@@ -56,8 +56,6 @@ namespace mongo {
 
         tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.cacheSize",
                 "tokuftEngineCacheSize", moe::UnsignedLongLong, "TokuFT engine cache size (bytes)");
-        tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.checkpointPeriod",
-                "tokuftEngineCheckpointPeriod", moe::Int, "TokuFT engine checkpoint period (s)");
         tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.cleanerIterations",
                 "tokuftEngineCleanerIterations", moe::Int, "TokuFT engine cleaner iterations");
         tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.cleanerPeriod",
@@ -92,11 +90,11 @@ namespace mongo {
                 warning() << "TokuFT: cacheSize is under 1GB, this is not recommended for production." << std::endl;
             }
         }
-        if (params.count("storage.tokuft.engineOptions.checkpointPeriod")) {
-            checkpointPeriod = params["storage.tokuft.engineOptions.checkpointPeriod"].as<int>();
+        if (params.count("storage.syncPeriodSecs")) {
+            checkpointPeriod = static_cast<int>(params["storage.syncPeriodSecs"].as<double>());
             if (checkpointPeriod <= 0) {
                 StringBuilder sb;
-                sb << "storage.tokuft.engineOptions.checkpointPeriod must be > 0, but attempted to set to: "
+                sb << "storage.syncPeriodSecs must be > 0, but attempted to set to: "
                    << checkpointPeriod;
                 return Status(ErrorCodes::BadValue, sb.str());
             }
