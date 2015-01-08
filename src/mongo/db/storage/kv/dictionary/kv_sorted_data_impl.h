@@ -33,6 +33,7 @@
 #include <boost/scoped_ptr.hpp>
 
 #include "mongo/bson/ordering.h"
+#include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/sorted_data_interface.h"
 
 namespace mongo {

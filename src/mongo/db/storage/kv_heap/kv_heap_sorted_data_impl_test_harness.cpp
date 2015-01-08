@@ -39,7 +39,7 @@ namespace mongo {
         virtual SortedDataInterface* newSortedDataInterface(bool unqiue) {
             auto_ptr<OperationContext> opCtx(newOperationContext());
             IndexEntryComparison iec(Ordering::make(BSONObj()));
-            auto_ptr<KVDictionary> db(new KVHeapDictionary(KVDictionary::Comparator::useIndexEntryComparison(iec)));
+            auto_ptr<KVDictionary> db(new KVHeapDictionary(KVDictionary::Comparator::useMemcmp()));
             return new KVSortedDataImpl(db.release(), opCtx.get(), NULL);
         }
 
