@@ -114,7 +114,7 @@ namespace mongo {
         if (_startupVersion < MIN_SUPPORTED_VERSION) {
             warning() << "Found unsupported disk format version: " << static_cast<int>(_startupVersion) << "." << startupWarningsLog;
             warning() << "The minimum supported disk format version by TokuFT is " << static_cast<int>(MIN_SUPPORTED_VERSION) << "." << startupWarningsLog;
-            warning() << "Please upgrade to an earlier version of TokuFT before upgrading to this version." << startupWarningsLog;
+            warning() << "Please use an earlier version of TokuFT to dump your data and reload it into this version." << startupWarningsLog;
             return Status(ErrorCodes::UnsupportedFormat, "version on disk too low");
         }
 
