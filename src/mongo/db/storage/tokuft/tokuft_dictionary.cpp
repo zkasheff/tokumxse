@@ -118,9 +118,7 @@ namespace mongo {
                                          comparator(), DupKeyFilter(exactMatchSuffix), 0, true, false, true));
                  cur.ok(); cur.next(foundKey, foundVal)) {
                 // If we found anything, it must have matched the filter, so it's a duplicate.
-                StringBuilder sb;
-                sb << "E11000 duplicate key error dup key: " << BSONObj(lookupLeft.begin());
-                return Status(ErrorCodes::DuplicateKey, sb.str());
+                return Status(ErrorCodes::DuplicateKey, "E11000 duplicate key error");
             }
         } catch (ftcxx::ft_exception &e) {
             return statusFromTokuFTException(e);

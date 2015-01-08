@@ -136,6 +136,10 @@ namespace mongo {
                                                     makeString(key, RecordId::max(), false),
                                                     Slice::of(loc))
                                  : dupKeyCheck(txn, key, loc));
+                if (status == ErrorCodes::DuplicateKey) {
+                    // Adjust the message to include the key.
+                    return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
+                }
                 if (!status.isOK()) {
                     return status;
                 }
