@@ -384,7 +384,7 @@ namespace mongo {
 
     // ---------------------------------------------------------------------- //
 
-    void KVRecordStore::KVRecordIterator::_setCursor(const RecordId &id) {
+    void KVRecordStore::KVRecordIterator::_setCursor(const RecordId id) {
         // We should no cursor at this point, either because we're getting newly
         // constructed or because we're recovering from saved state (and so
         // the old cursor needed to be dropped).
@@ -435,6 +435,7 @@ namespace mongo {
         if (!isEOF()) {
             _savedLoc = curr();
             _savedVal = _cursor->currVal().owned();
+            dassert(_savedLoc.isNormal());
         } else {
             _savedLoc = RecordId();
             _savedVal = Slice();

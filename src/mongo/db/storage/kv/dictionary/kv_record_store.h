@@ -197,7 +197,7 @@ namespace mongo {
 
             boost::scoped_ptr<KVDictionary::Cursor> _cursor;
 
-            void _setCursor(const RecordId &id);
+            void _setCursor(const RecordId id);
 
             void _saveLocAndVal();
 
