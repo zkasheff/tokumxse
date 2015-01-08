@@ -302,23 +302,20 @@ namespace mongo {
     ServerStatusMetricField<Counter64> moveCounterDisplay( "record.moves", &moveCounter );
 
     StatusWith<RecordId> Collection::updateDocument( OperationContext* txn,
-                                                    const RecordId& oldLocation,
-                                                    const BSONObj& objNew,
-                                                    bool enforceQuota,
-                                                    OpDebug* debug ) {
+                                                     const RecordId& oldLocation,
+                                                     const BSONObj& objOld,
+                                                     const BSONObj& objNew,
+                                                     bool enforceQuota,
+                                                     bool indexesAffected,
+                                                     OpDebug* debug ) {
 
         uint64_t txnId = txn->recoveryUnit()->getMyTransactionCount();
 
-        BSONObj objOld = _recordStore->dataFor( txn, oldLocation ).releaseToBson();
-
-        if ( objOld.hasElement( "_id" ) ) {
-            BSONElement oldId = objOld["_id"];
-            BSONElement newId = objNew["_id"];
-            if ( oldId != newId )
-                return StatusWith<RecordId>( ErrorCodes::InternalError,
-                                            "in Collection::updateDocument _id mismatch",
-                                            13596 );
-        }
+        BSONElement oldId = objOld["_id"];
+        if ( !oldId.eoo() && ( oldId != objNew["_id"] ) )
+            return StatusWith<RecordId>( ErrorCodes::InternalError,
+                                         "in Collection::updateDocument _id mismatch",
+                                         13596 );
 
         /* duplicate key check. we descend the btree twice - once for this check, and once for the actual inserts, further
            below.  that is suboptimal, but it's pretty complicated to do it the other way without rollbacks...
@@ -328,21 +325,24 @@ namespace mongo {
         // represent the index updates needed to be done, based on the changes between objOld and
         // objNew.
         OwnedPointerMap<IndexDescriptor*,UpdateTicket> updateTickets;
-        IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator( txn, true );
-        while ( ii.more() ) {
-            IndexDescriptor* descriptor = ii.next();
-            IndexAccessMethod* iam = _indexCatalog.getIndex( descriptor );
+        if ( indexesAffected ) {
+            IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator( txn, true );
+            while ( ii.more() ) {
+                IndexDescriptor* descriptor = ii.next();
+                IndexAccessMethod* iam = _indexCatalog.getIndex( descriptor );
 
-            InsertDeleteOptions options;
-            options.logIfError = false;
-            options.dupsAllowed =
-                !(KeyPattern::isIdKeyPattern(descriptor->keyPattern()) || descriptor->unique())
-                || repl::getGlobalReplicationCoordinator()->shouldIgnoreUniqueIndex(descriptor);
-            UpdateTicket* updateTicket = new UpdateTicket();
-            updateTickets.mutableMap()[descriptor] = updateTicket;
-            Status ret = iam->validateUpdate(txn, objOld, objNew, oldLocation, options, updateTicket );
-            if ( !ret.isOK() ) {
-                return StatusWith<RecordId>( ret );
+                InsertDeleteOptions options;
+                options.logIfError = false;
+                options.dupsAllowed =
+                    !(KeyPattern::isIdKeyPattern(descriptor->keyPattern()) || descriptor->unique())
+                    || repl::getGlobalReplicationCoordinator()->shouldIgnoreUniqueIndex(descriptor);
+                UpdateTicket* updateTicket = new UpdateTicket();
+                updateTickets.mutableMap()[descriptor] = updateTicket;
+                Status ret = iam->validateUpdate(
+                    txn, objOld, objNew, oldLocation, options, updateTicket );
+                if ( !ret.isOK() ) {
+                    return StatusWith<RecordId>( ret );
+                }
             }
         }
 
@@ -386,17 +386,20 @@ namespace mongo {
         if ( debug )
             debug->keyUpdates = 0;
 
-        ii = _indexCatalog.getIndexIterator( txn, true );
-        while ( ii.more() ) {
-            IndexDescriptor* descriptor = ii.next();
-            IndexAccessMethod* iam = _indexCatalog.getIndex( descriptor );
+        if ( indexesAffected ) {
+            IndexCatalog::IndexIterator ii = _indexCatalog.getIndexIterator( txn, true );
+            while ( ii.more() ) {
+                IndexDescriptor* descriptor = ii.next();
+                IndexAccessMethod* iam = _indexCatalog.getIndex( descriptor );
 
-            int64_t updatedKeys;
-            Status ret = iam->update(txn, *updateTickets.mutableMap()[descriptor], &updatedKeys);
-            if ( !ret.isOK() )
-                return StatusWith<RecordId>( ret );
-            if ( debug )
-                debug->keyUpdates += updatedKeys;
+                int64_t updatedKeys;
+                Status ret = iam->update(
+                    txn, *updateTickets.mutableMap()[descriptor], &updatedKeys);
+                if ( !ret.isOK() )
+                    return StatusWith<RecordId>( ret );
+                if ( debug )
+                    debug->keyUpdates += updatedKeys;
+            }
         }
 
         // Broadcast the mutation so that query results stay correct.
