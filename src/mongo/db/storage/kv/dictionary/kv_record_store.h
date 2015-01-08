@@ -122,6 +122,10 @@ namespace mongo {
                                                   bool enforceQuota,
                                                   UpdateMoveNotifier* notifier );
 
+        virtual bool updateWithDamagesSupported() const {
+            return _db->updateSupported();
+        }
+
         virtual Status updateWithDamages( OperationContext* txn,
                                           const RecordId& loc,
                                           const RecordData& oldRec,

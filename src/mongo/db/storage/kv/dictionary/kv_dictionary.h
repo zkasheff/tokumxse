@@ -119,6 +119,12 @@ namespace mongo {
         virtual Status remove(OperationContext *opCtx, const Slice &key) = 0;
 
         /**
+         * Returns true if the underlying implementation supports a fast update mechanism.  If so,
+         * it should implement both overloads of update() below.
+         */
+        virtual bool updateSupported() const { return false; }
+
+        /**
          * Update the value for `key' whose old value is `oldValue' and
          * whose new image should be the result of applying `message'.
          * 
@@ -129,7 +135,10 @@ namespace mongo {
          * Return: Status:OK() success.
          */
         virtual Status update(OperationContext *opCtx, const Slice &key, const Slice &oldValue,
-                              const KVUpdateMessage &message);
+                              const KVUpdateMessage &message) {
+            invariant(false);
+            return Status::OK();
+        }
 
         /**
          * Update the value for `key' whose new image should be the result of applying `message' to
@@ -139,7 +148,10 @@ namespace mongo {
          *       calling the other `update' overload with the result (or `Slice()' if missing).
          * Return: Status:OK() success.
          */
-        virtual Status update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message);
+        virtual Status update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message) {
+            invariant(false);
+            return Status::OK();
+        }
 
         /**
          * Name of the dictionary.

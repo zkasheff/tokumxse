@@ -118,6 +118,8 @@ namespace mongo {
 
         virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value);
 
+        virtual bool updateSupported() const { return true; }
+
         virtual Status update(OperationContext *opCtx, const Slice &key, const Slice &oldValue,
                               const KVUpdateMessage &message) {
             return update(opCtx, key, message);
