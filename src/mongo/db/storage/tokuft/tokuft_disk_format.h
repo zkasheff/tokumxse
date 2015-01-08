@@ -43,9 +43,10 @@ namespace mongo {
             DISK_VERSION_1 = 1,  // Implicit version before we serialized version numbers
             DISK_VERSION_2 = 2,  // Initial prerelease version, BSON index keys, memcmp-able RecordIds
             DISK_VERSION_3 = 3,  // Use KeyString for index entries, incompatible with earlier versions
+            DISK_VERSION_4 = 4,  // KeyString gained compressed format, RecordId also uses compressed format, incompatible with earlier versions
             DISK_VERSION_NEXT,
             DISK_VERSION_CURRENT = DISK_VERSION_NEXT - 1,
-            MIN_SUPPORTED_VERSION = 3,
+            MIN_SUPPORTED_VERSION = DISK_VERSION_4,
             MAX_SUPPORTED_VERSION = DISK_VERSION_CURRENT,
             FIRST_SERIALIZED_VERSION = DISK_VERSION_2,
         };

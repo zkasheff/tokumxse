@@ -193,7 +193,7 @@ namespace mongo {
 
             boost::scoped_ptr<KVDictionary::Cursor> _cursor;
 
-            void _setCursor(const RecordId loc);
+            void _setCursor(const RecordId &id);
 
             void _saveLocAndVal();
 
@@ -238,7 +238,7 @@ namespace mongo {
         RecordId _nextId();
 
         // An owned KVDictionary interface used to store records.
-        // The key is a modified version of RecordId (see RecordIdKey) and
+        // The key is a modified version of RecordId (see KeyString) and
         // the value is the raw record data as provided by insertRecord etc.
         boost::scoped_ptr<KVDictionary> _db;
 

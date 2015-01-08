@@ -115,9 +115,7 @@ namespace mongo {
     }
 
     RecordId KVSortedDataImpl::extractRecordId(const Slice &s) {
-        // KeyString really should have this in its API.
-        const uint64_t *bigRepr = reinterpret_cast<const uint64_t *>(s.data() + s.size() - sizeof(*bigRepr));
-        return RecordId(static_cast<int64_t>(endian::bigToNative(*bigRepr)));
+        return KeyString::decodeRecordIdEndingAt(s.data() + s.size() - 1);
     }
 
     Status KVSortedDataImpl::insert(OperationContext* txn,

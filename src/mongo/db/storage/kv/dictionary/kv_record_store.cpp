@@ -39,6 +39,7 @@
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/storage/key_string.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store.h"
 #include "mongo/db/storage/kv/dictionary/kv_size_storer.h"
@@ -49,90 +50,6 @@
 #include "mongo/util/log.h"
 
 namespace mongo {
-
-    /**
-     * Class to abstract the in-memory vs on-disk format of a key in the
-     * record dictionary.
-     *
-     * In memory, a key is a valid RecordId for which loc.isValid() and
-     * !loc.isNull() are true.
-     *
-     * On disk, a key is a pair of back-to-back integers whose individual
-     * 4 bytes values are serialized in big-endian format. This allows the
-     * entire structure to be compared with memcmp while still maintaining
-     * the property that the filenum field compares more significantly
-     * than the offset field. Being able to compare with memcmp is
-     * important because for most storage engines, memcmp is the default
-     * and fastest comparator.
-     */
-    class RecordIdKey {
-        RecordId _id;
-        uint64_t _key;
-
-        // We assume that a RecordId can be represented in a 64 bit integer.
-        BOOST_STATIC_ASSERT(sizeof(RecordId) == sizeof(uint64_t));
-
-        // In order to use memcmp to compare keys the same way as they're compared by
-        // RecordId::compare(), we need to move negative numbers up into the unsigned space before
-        // converting to big-endian.  These convert back and forth.
-        //
-        // Note: this is intimately tied to the internal representation of RecordIds.
-        static uint64_t toUnsigned(int64_t v) {
-            return static_cast<uint64_t>(v - LLONG_MIN);
-        }
-        static int64_t toSigned(uint64_t v) {
-            return static_cast<int64_t>(v) + LLONG_MIN;
-        }
-
-    public:
-        /**
-         * Used when we have a RecordId and we want a memcmp-ready Slice to
-         * be used as a stored key in the KVDictionary.
-         *
-         * Algorithm:
-         * - Take a RecordId with two integers laid out in native bye order
-         *   [a, o]
-         * - Construct a 64 bit integer whose high order bits are `a' and
-         *   whose low order bits are `o'
-         * - Convert that integer to big endian and store it in `_key'
-         */
-        RecordIdKey(const RecordId &id)
-            : _id(id),
-              _key(endian::nativeToBig(toUnsigned(id.repr())))
-        {}
-
-        /**
-         * Used when we have a big-endian key Slice from the KVDictionary
-         * and we want to get its RecordId representation.
-         *
-         * Algorithm (work backwards from the above constructor's
-         * algorithm):
-         * - Interpret the stored key as a 64 bit integer into `_key',
-         *   then convert `_key' to native byte order and store it in `k'.
-         * - Create a RecordId(a, o) where `a' is a 32 bit integer
-         *   constructed from the high order bits of `_k' and where `o' is
-         *   constructed from the low order bits.
-         */
-        RecordIdKey(const Slice &key)
-            : _id(toSigned(endian::bigToNative(key.as<uint64_t>()))),
-              _key(key.as<uint64_t>())
-        {}
-
-        /**
-         * Return an un-owned slice of _key, suitable for use as a key
-         * into the KVDictionary that maps record ids to record data.
-         */
-        Slice key() const {
-            return Slice::of(_key);
-        }
-
-        /**
-         * Return the RecordId representation of a deserialized key Slice
-         */
-        RecordId id() const {
-            return _id;
-        }
-    };
 
     KVRecordStore::KVRecordStore( KVDictionary *db,
                                   OperationContext* opCtx,
@@ -230,11 +147,9 @@ namespace mongo {
         }
     }
 
-    RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& loc) {
-        const RecordIdKey key(loc);
-
+    RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& id) {
         Slice value;
-        Status status = db->get(txn, key.key(), value);
+        Status status = db->get(txn, Slice::of(KeyString::make(id)), value);
         if (!status.isOK()) {
             if (status.code() == ErrorCodes::NoSuchKey) {
                 return RecordData(nullptr, 0);
@@ -266,31 +181,30 @@ namespace mongo {
         return true;
     }
 
-    void KVRecordStore::deleteRecord( OperationContext* txn, const RecordId& id ) {
-        const RecordIdKey key(id);
-
+    void KVRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
+        const KeyString key = KeyString::make(id);
         Slice val;
-        Status s = _db->get(txn, key.key(), val);
+        Status s = _db->get(txn, Slice::of(key), val);
         invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << id << " for delete: " << s.toString());
 
         _updateStats(txn, -1, -val.size());
 
-        s = _db->remove( txn, key.key() );
+        s = _db->remove(txn, Slice::of(key));
         invariant(s.isOK());
     }
 
     Status KVRecordStore::_insertRecord(OperationContext *txn,
                                         const RecordId &id,
                                         const Slice &value) {
-        const RecordIdKey key(id);
+        const KeyString key = KeyString::make(id);
         DEV {
             // Should never overwrite an existing record.
             Slice v;
-            const Status status = _db->get(txn, key.key(), v);
+            const Status status = _db->get(txn, Slice::of(key), v);
             invariant(status.code() == ErrorCodes::NoSuchKey);
         }
 
-        Status s = _db->insert(txn, key.key(), value);
+        Status s = _db->insert(txn, Slice::of(key), value);
         if (!s.isOK()) {
             return s;
         }
@@ -300,10 +214,10 @@ namespace mongo {
         return s;
     }
 
-    StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
+    StatusWith<RecordId> KVRecordStore::insertRecord(OperationContext* txn,
                                                      const char* data,
                                                      int len,
-                                                     bool enforceQuota ) {
+                                                     bool enforceQuota) {
         const RecordId id = _nextId();
         const Slice value(data, len);
 
@@ -315,28 +229,28 @@ namespace mongo {
         return StatusWith<RecordId>(id);
     }
 
-    StatusWith<RecordId> KVRecordStore::insertRecord( OperationContext* txn,
+    StatusWith<RecordId> KVRecordStore::insertRecord(OperationContext* txn,
                                                      const DocWriter* doc,
-                                                     bool enforceQuota ) {
+                                                     bool enforceQuota) {
         Slice value(doc->documentSize());
         doc->writeDocument(value.mutableData());
         return insertRecord(txn, value.data(), value.size(), enforceQuota);
     }
 
-    StatusWith<RecordId> KVRecordStore::updateRecord( OperationContext* txn,
-                                                     const RecordId& loc,
+    StatusWith<RecordId> KVRecordStore::updateRecord(OperationContext* txn,
+                                                     const RecordId& id,
                                                      const char* data,
                                                      int len,
                                                      bool enforceQuota,
-                                                     UpdateMoveNotifier* notifier ) {
-        const RecordIdKey key(loc);
+                                                     UpdateMoveNotifier* notifier) {
+        const KeyString key = KeyString::make(id);
         const Slice value(data, len);
 
         int64_t numRecordsDelta = 0;
         int64_t dataSizeDelta = value.size();
 
         Slice val;
-        Status status = _db->get(txn, key.key(), val);
+        Status status = _db->get(txn, Slice::of(key), val);
         if (status.code() == ErrorCodes::NoSuchKey) {
             numRecordsDelta += 1;
         } else if (status.isOK()) {
@@ -346,22 +260,22 @@ namespace mongo {
         }
 
         // An update with a complete new image (data, len) is implemented as an overwrite insert.
-        status = _db->insert(txn, key.key(), value);
+        status = _db->insert(txn, Slice::of(key), value);
         if (!status.isOK()) {
             return StatusWith<RecordId>(status);
         }
 
         _updateStats(txn, numRecordsDelta, dataSizeDelta);
 
-        return StatusWith<RecordId>(loc);
+        return StatusWith<RecordId>(id);
     }
 
     Status KVRecordStore::updateWithDamages( OperationContext* txn,
-                                             const RecordId& loc,
+                                             const RecordId& id,
                                              const RecordData& oldRec,
                                              const char* damageSource,
                                              const mutablebson::DamageVector& damages ) {
-        const RecordIdKey key(loc);
+        const KeyString key = KeyString::make(id);
 
         const Slice oldValue(oldRec.data(), oldRec.size());
         const KVUpdateWithDamagesMessage message(damageSource, damages);
@@ -369,7 +283,7 @@ namespace mongo {
         // updateWithDamages can't change the number or size of records, so we don't need to update
         // stats.
 
-        return _db->update(txn, key.key(), oldValue, message);
+        return _db->update(txn, Slice::of(key), oldValue, message);
     }
 
     RecordIterator* KVRecordStore::getIterator( OperationContext* txn,
@@ -389,10 +303,10 @@ namespace mongo {
         // This is not a very performant implementation of truncate.
         //
         // At the time of this writing, it is only used by 'emptycapped', a test-only command.
-        for (boost::scoped_ptr<RecordIterator> iter( getIterator( txn ) );
+        for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
              !iter->isEOF(); ) {
-            RecordId loc = iter->getNext();
-            deleteRecord( txn, loc );
+            RecordId id = iter->getNext();
+            deleteRecord(txn, id);
         }
 
         return Status::OK();
@@ -470,7 +384,7 @@ namespace mongo {
 
     // ---------------------------------------------------------------------- //
 
-    void KVRecordStore::KVRecordIterator::_setCursor(const RecordId loc) {
+    void KVRecordStore::KVRecordIterator::_setCursor(const RecordId &id) {
         // We should no cursor at this point, either because we're getting newly
         // constructed or because we're recovering from saved state (and so
         // the old cursor needed to be dropped).
@@ -480,9 +394,8 @@ namespace mongo {
         _savedVal = Slice();
 
         // A new iterator with no start position will be either min() or max()
-        invariant(loc.isNormal() || loc == RecordId::min() || loc == RecordId::max());
-        const RecordIdKey key(loc);
-        _cursor.reset(_db->getCursor(_txn, key.key(), _dir));
+        invariant(id.isNormal() || id == RecordId::min() || id == RecordId::max());
+        _cursor.reset(_db->getCursor(_txn, Slice::of(KeyString::make(id)), _dir));
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
@@ -515,8 +428,7 @@ namespace mongo {
             return RecordId();
         }
 
-        const RecordIdKey key(_cursor->currKey());
-        return key.id();
+        return KeyString::decodeRecordIdStartingAt(_cursor->currKey().data());
     }
 
     void KVRecordStore::KVRecordIterator::_saveLocAndVal() {
