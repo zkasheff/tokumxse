@@ -44,7 +44,7 @@ namespace mongo {
 
     ftcxx::DBEnv& tokuftGlobalEnv() {
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
-        massert(28597, "no storage engine available", storageEngine);
+        massert(28606, "no storage engine available", storageEngine);
         KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
         massert(28601, "storage engine is not a KVStorageEngine", kvStorageEngine);
         KVEngine* kvEngine = kvStorageEngine->getEngine();

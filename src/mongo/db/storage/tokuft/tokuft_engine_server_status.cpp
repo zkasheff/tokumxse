@@ -162,7 +162,7 @@ namespace mongo {
             }
 
             uint64_t getInteger() const {
-                massert(28598, "TokuFT: wrong engine status type for getInteger", _type == UInt64);
+                massert(28607, "TokuFT: wrong engine status type for getInteger", _type == UInt64);
                 return _uint64;
             }
 
@@ -252,7 +252,7 @@ namespace mongo {
                 if (scaleElt.ok()) {
                     scale = scaleElt.safeNumberLong();
                 }
-                uassert(28599, "scale must be positive", scale > 0);
+                uassert(28608, "scale must be positive", scale > 0);
             }
 
             NestedBuilder::Stack result;
