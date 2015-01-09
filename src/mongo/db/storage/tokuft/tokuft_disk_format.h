@@ -30,6 +30,8 @@
 
 #include "mongo/base/status.h"
 #include "mongo/bson/bson_field.h"
+#include "mongo/bson/bsonobj.h"
+#include "mongo/db/storage/kv/slice.h"
 
 namespace mongo {
 
@@ -76,6 +78,8 @@ namespace mongo {
         Status initialize(OperationContext *opCtx);
 
         Status upgradeToCurrent(OperationContext *opCtx);
+
+        Status getInfo(OperationContext *opCtx, BSONObj &b) const;
     };
 
 } // namespace mongo

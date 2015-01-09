@@ -45,6 +45,7 @@
 #include "mongo/base/string_data.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/commands/server_status.h"
+#include "mongo/db/storage/tokuft/tokuft_disk_format.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
 #include "mongo/db/storage/tokuft/tokuft_engine_global_accessor.h"
 #include "mongo/db/storage/tokuft/tokuft_global_options.h"
@@ -256,6 +257,14 @@ namespace mongo {
             }
 
             NestedBuilder::Stack result;
+
+            {
+                TokuFTDiskFormatVersion diskFormatVersion(tokuftGlobalEngine()->internalMetadataDict());
+                BSONObj versionObj;
+                Status s = diskFormatVersion.getInfo(opCtx, versionObj);
+                uassertStatusOK(s);
+                result.b().append("diskFormatVersion", versionObj);
+            }
 
             FractalTreeEngineStatus status(tokuftGlobalEnv());
 

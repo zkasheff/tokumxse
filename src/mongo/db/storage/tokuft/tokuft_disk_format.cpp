@@ -78,8 +78,8 @@ namespace mongo {
     {}
 
     Status TokuFTDiskFormatVersion::initialize(OperationContext *opCtx) {
-        Slice val;
-        Status s = _metadataDict->get(opCtx, versionInfoKey, val);
+        BSONObj oldVersionObj;
+        Status s = getInfo(opCtx, oldVersionObj);
         if (s == ErrorCodes::NoSuchKey) {
             BSONArrayBuilder ab;
             ab.append(BSON(upgradedToField(DISK_VERSION_CURRENT) <<
@@ -102,9 +102,8 @@ namespace mongo {
         } else if (!s.isOK()) {
             return s;
         } else {
-            BSONObj versionObj(val.ownedBuf());
             long long llVersion;
-            s = bsonExtractIntegerField(versionObj, currentVersionField(), &llVersion);
+            s = bsonExtractIntegerField(oldVersionObj, currentVersionField(), &llVersion);
             if (!s.isOK()) {
                 return s;
             }
@@ -179,13 +178,12 @@ namespace mongo {
 
         }
 
-        Slice val;
-        Status s = _metadataDict->get(opCtx, versionInfoKey, val);
+        BSONObj oldVersionObj;
+        Status s = getInfo(opCtx, oldVersionObj);
         if (!s.isOK()) {
             return s;
         }
 
-        BSONObj oldVersionObj(val.ownedBuf());
         BSONElement historyElt = oldVersionObj[historyField()];
         if (historyElt.type() != mongo::Array) {
             return Status(ErrorCodes::BadValue, "invalid version history field type");
@@ -216,6 +214,16 @@ namespace mongo {
         }
 
         _currentVersion = targetVersion;
+        return Status::OK();
+    }
+
+    Status TokuFTDiskFormatVersion::getInfo(OperationContext *opCtx, BSONObj &b) const {
+        Slice val;
+        Status s = _metadataDict->get(opCtx, versionInfoKey, val);
+        if (!s.isOK()) {
+            return s;
+        }
+        b = val.as<BSONObj>().getOwned();
         return Status::OK();
     }
 

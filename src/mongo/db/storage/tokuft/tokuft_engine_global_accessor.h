@@ -32,7 +32,11 @@
 
 namespace mongo {
 
+    class TokuFTEngine;
+
     bool globalStorageEngineIsTokuFT();
+
+    TokuFTEngine* tokuftGlobalEngine();
 
     ftcxx::DBEnv& tokuftGlobalEnv();
 

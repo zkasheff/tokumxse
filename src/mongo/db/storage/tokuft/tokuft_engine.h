@@ -100,6 +100,10 @@ namespace mongo {
 
         ftcxx::DBEnv& env() { return _env; }
 
+        KVDictionary* internalMetadataDict() const {
+            return _internalMetadataDict.get();
+        }
+
     private:
         static TokuFTDictionaryOptions _createOptions(const BSONObj& options, bool isRecordStore);
 

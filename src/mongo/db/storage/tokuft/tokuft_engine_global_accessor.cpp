@@ -42,7 +42,7 @@ namespace mongo {
         return storageGlobalParams.engine == "tokuft";
     }
 
-    ftcxx::DBEnv& tokuftGlobalEnv() {
+    TokuFTEngine* tokuftGlobalEngine() {
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
         massert(28606, "no storage engine available", storageEngine);
         KVStorageEngine* kvStorageEngine = dynamic_cast<KVStorageEngine*>(storageEngine);
@@ -51,7 +51,11 @@ namespace mongo {
         invariant(kvEngine);
         TokuFTEngine* tokuftEngine = dynamic_cast<TokuFTEngine*>(kvEngine);
         massert(28602, "storage engine is not TokuFT", tokuftEngine);
-        return tokuftEngine->env();
+        return tokuftEngine;
+    }
+
+    ftcxx::DBEnv& tokuftGlobalEnv() {
+        return tokuftGlobalEngine()->env();
     }
 
 } // namespace mongo
