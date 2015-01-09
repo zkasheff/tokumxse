@@ -51,6 +51,12 @@
 
 namespace mongo {
 
+    namespace {
+
+        const long long kScanOnCollectionCreateThreshold = 10000;
+
+    }
+
     KVRecordStore::KVRecordStore( KVDictionary *db,
                                   OperationContext* opCtx,
                                   const StringData& ns,
@@ -79,9 +85,33 @@ namespace mongo {
             long long numRecords;
             long long dataSize;
             _sizeStorer->load(_ident, &numRecords, &dataSize);
-            _numRecords.store(numRecords);
-            _dataSize.store(dataSize);
-            _sizeStorer->onCreate(this, _ident, numRecords, dataSize);
+
+            if (numRecords < kScanOnCollectionCreateThreshold) {
+                LOG(1) << "Doing scan of collection " << ns << " to refresh numRecords and dataSize";
+                _numRecords.store(0);
+                _dataSize.store(0);
+
+                for (boost::scoped_ptr<RecordIterator> iter(getIterator(opCtx)); !iter->isEOF(); ) {
+                    RecordId loc = iter->getNext();
+                    RecordData data = iter->dataFor(loc);
+                    _numRecords.fetchAndAdd(1);
+                    _dataSize.fetchAndAdd(data.size());
+                }
+
+                if (numRecords != _numRecords.load()) {
+                    warning() << "Stored value for " << ns << " numRecords was " << numRecords
+                              << " but actual value is " << _numRecords.load();
+                }
+                if (dataSize != _dataSize.load()) {
+                    warning() << "Stored value for " << ns << " dataSize was " << dataSize
+                              << " but actual value is " << _dataSize.load();
+                }
+            } else {
+                _numRecords.store(numRecords);
+                _dataSize.store(dataSize);
+            }
+
+            _sizeStorer->onCreate(this, _ident, _numRecords.load(), _dataSize.load());
         }
     }
 
@@ -326,7 +356,8 @@ namespace mongo {
                                     ValidateResults* results,
                                     BSONObjBuilder* output ) {
         bool invalidObject = false;
-        size_t numRecords = 0;
+        long long numRecords = 0;
+        long long dataSizeTotal = 0;
         for (boost::scoped_ptr<RecordIterator> iter( getIterator( txn ) );
              !iter->isEOF(); ) {
             numRecords++;
@@ -343,10 +374,38 @@ namespace mongo {
                         invalidObject = true;
                         log() << "Invalid object detected in " << _ns << ": " << status.reason();
                     }
+                    dataSizeTotal += static_cast<long long>(dataSize);
                 }
             }
             iter->getNext();
         }
+
+        if (_sizeStorer && full && scanData && results->valid) {
+            if (numRecords != _numRecords.load() || dataSizeTotal != _dataSize.load()) {
+                warning() << ns() << ": Existing record and data size counters ("
+                          << _numRecords.load() << " records " << _dataSize.load() << " bytes) "
+                          << "are inconsistent with full validation results ("
+                          << numRecords << " records " << dataSizeTotal << " bytes). "
+                          << "Updating counters with new values.";
+            }
+
+            _numRecords.store(numRecords);
+            _dataSize.store(dataSizeTotal);
+
+            long long oldNumRecords;
+            long long oldDataSize;
+            _sizeStorer->load(_ident, &oldNumRecords, &oldDataSize);
+            if (numRecords != oldNumRecords || dataSizeTotal != oldDataSize) {
+                warning() << ns() << ": Existing data in size storer ("
+                          << oldNumRecords << " records " << oldDataSize << " bytes) "
+                          << "is inconsistent with full validation results ("
+                          << numRecords << " records " << dataSizeTotal << " bytes). "
+                          << "Updating size storer with new values.";
+            }
+
+            _sizeStorer->store(this, _ident, numRecords, dataSizeTotal);
+        }
+
         output->appendNumber("nrecords", numRecords);
 
         return Status::OK();
