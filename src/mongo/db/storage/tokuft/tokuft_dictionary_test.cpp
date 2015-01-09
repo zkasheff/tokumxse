@@ -50,12 +50,10 @@ namespace mongo {
             auto_ptr<OperationContext> opCtx(new OperationContextNoop(newRecoveryUnit()));
 
             const string ident = mongoutils::str::stream() << "TokuFTDictionary-" << _seq++;
-            Status status = _engine->createKVDictionary(opCtx.get(), ident, KVDictionary::Comparator::useMemcmp(),
-                                                        BSONObj(), true);
+            Status status = _engine->createKVDictionary(opCtx.get(), ident, KVDictionary::Encoding(), BSONObj());
             invariant(status.isOK());
 
-	    return _engine->getKVDictionary(opCtx.get(), ident, KVDictionary::Comparator::useMemcmp(),
-                                            BSONObj(), true);
+	    return _engine->getKVDictionary(opCtx.get(), ident, KVDictionary::Encoding(), BSONObj());
 	}
 
 	virtual RecoveryUnit* newRecoveryUnit() {

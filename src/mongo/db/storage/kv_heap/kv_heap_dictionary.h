@@ -41,15 +41,15 @@ namespace mongo {
     class KVHeapDictionary : public KVDictionary {
     public:
         class SliceCmp {
-            KVDictionary::Comparator _cmp;
+            KVDictionary::Encoding _enc;
 
         public:
-            SliceCmp(KVDictionary::Comparator cmp)
-                : _cmp(cmp)
+            SliceCmp(const KVDictionary::Encoding &enc)
+                : _enc(enc)
             {}
 
             int cmp(const Slice &a, const Slice &b) const {
-                return _cmp(a, b);
+                return _enc.cmp(a, b);
             }
 
             bool operator()(const Slice &a, const Slice &b) const {
@@ -97,7 +97,7 @@ namespace mongo {
         void _deleteKey(const Slice &key);
 
     public:
-        KVHeapDictionary(const KVDictionary::Comparator cmp = KVDictionary::Comparator::useMemcmp());
+        KVHeapDictionary(const KVDictionary::Encoding &cmp = KVDictionary::Encoding());
 
         Status get(OperationContext *opCtx, const Slice &key, Slice &value) const;
 

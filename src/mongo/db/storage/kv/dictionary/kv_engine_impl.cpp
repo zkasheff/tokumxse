@@ -64,8 +64,8 @@ namespace mongo {
                                             const StringData& ident,
                                             const CollectionOptions& options ) {
         // Creating a record store is as simple as creating one with the given `ident'
-        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
-                                  options.storageEngine, true);
+        return createKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
+                                  options.storageEngine);
     }
 
     /**
@@ -77,8 +77,8 @@ namespace mongo {
                                                const StringData& ns,
                                                const StringData& ident,
                                                const CollectionOptions& options ) {
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
-                                                  options.storageEngine, true));
+        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
+                                                  options.storageEngine));
         auto_ptr<KVRecordStore> rs;
         KVSizeStorer *sizeStorer = (persistDictionaryStats()
                                     ? getSizeStorer(opCtx)
@@ -103,18 +103,20 @@ namespace mongo {
                                                    const StringData& ident,
                                                    const IndexDescriptor* desc) {
         // Creating a sorted data impl is as simple as creating one with the given `ident'
+        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
-        return createKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
-                                  options, false);
+        return createKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
+                                  options);
 
     }
 
     SortedDataInterface* KVEngineImpl::getSortedDataInterface(OperationContext* opCtx,
                                                               const StringData& ident,
                                                               const IndexDescriptor* desc) {
+        const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Comparator::useMemcmp(),
-                                                  options, false));
+        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
+                                                  options));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
     }
 

@@ -68,20 +68,32 @@ namespace mongo {
     class TokuFTDictionary : public KVDictionary {
     public:
         TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
-                         const KVDictionary::Comparator &cmp, const TokuFTDictionaryOptions& options);
+                         const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options);
 
-        class Comparator : public KVDictionary::Comparator {
+        class Encoding : public KVDictionary::Encoding {
         public:
-            Comparator(const KVDictionary::Comparator &cmp)
-                : KVDictionary::Comparator(cmp)
+            Encoding(const KVDictionary::Encoding &enc)
+                : KVDictionary::Encoding(enc)
             {}
 
-            Comparator(const ftcxx::Slice &serialized)
-                : KVDictionary::Comparator(ftslice2slice(serialized))
+            Encoding(const ftcxx::Slice &serialized)
+                : KVDictionary::Encoding(ftslice2slice(serialized))
             {}
 
             int operator()(const ftcxx::Slice &a, const ftcxx::Slice &b) const {
-                return KVDictionary::Comparator::operator()(ftslice2slice(a), ftslice2slice(b));
+                return cmp(a, b);
+            }
+
+            static int cmp(const ftcxx::Slice &a, const ftcxx::Slice &b) {
+                return KVDictionary::Encoding::cmp(ftslice2slice(a), ftslice2slice(b));
+            }
+
+            BSONObj extractKey(const ftcxx::Slice &s) const {
+                return KVDictionary::Encoding::extractKey(ftslice2slice(s));
+            }
+
+            RecordId extractRecordId(const ftcxx::Slice &s) const {
+                return KVDictionary::Encoding::extractRecordId(ftslice2slice(s));
             }
         };
 
@@ -102,7 +114,7 @@ namespace mongo {
             virtual Slice currVal() const;
 
         private:
-            typedef ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> FTCursor;
+            typedef ftcxx::BufferedCursor<TokuFTDictionary::Encoding, ftcxx::DB::NullFilter> FTCursor;
             FTCursor _cur;
             Slice _currKey;
             Slice _currVal;
@@ -148,8 +160,8 @@ namespace mongo {
         const ftcxx::DB &db() const { return _db; }
 
     private:
-        Comparator comparator() const {
-            return TokuFTDictionary::Comparator(_db.descriptor());
+        Encoding encoding() const {
+            return TokuFTDictionary::Encoding(_db.descriptor());
         }
 
         ftcxx::DB _db;

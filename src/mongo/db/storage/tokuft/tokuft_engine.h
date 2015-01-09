@@ -51,15 +51,13 @@ namespace mongo {
 
         virtual Status createKVDictionary(OperationContext* opCtx,
                                           const StringData& ident,
-                                          const KVDictionary::Comparator &cmp,
-                                          const BSONObj& options,
-                                          bool isRecordStore);
+                                          const KVDictionary::Encoding &enc,
+                                          const BSONObj& options);
 
         virtual KVDictionary* getKVDictionary(OperationContext* opCtx,
                                               const StringData& ident,
-                                              const KVDictionary::Comparator &cmp,
+                                              const KVDictionary::Encoding &enc,
                                               const BSONObj& options,
-                                              bool isRecordStore,
                                               bool mayCreate = false);
 
         virtual Status dropKVDictionary(OperationContext* opCtx,

@@ -57,13 +57,13 @@
 namespace mongo {
 
     TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
-                                       const KVDictionary::Comparator &cmp, const TokuFTDictionaryOptions& options)
+                                       const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options)
         : _db(ftcxx::DBBuilder()
               .set_readpagesize(options.readPageSize)
               .set_pagesize(options.pageSize)
               .set_compression_method(options.compressionMethod())
               .set_fanout(options.fanout)
-              .set_descriptor(slice2ftslice(cmp.serialize()))
+              .set_descriptor(slice2ftslice(enc.serialize()))
               .set_always_memcmp(true)
               .open(env, txn, ident.toString().c_str(), NULL,
                     DB_BTREE /* legacy flag */, DB_CREATE, 0644))
@@ -96,18 +96,19 @@ namespace mongo {
     }
 
     class DupKeyFilter {
+        const TokuFTDictionary::Encoding &_enc;
         RecordId _id;
 
     public:
-        DupKeyFilter(const RecordId &id)
-            : _id(id)
+        DupKeyFilter(const TokuFTDictionary::Encoding &enc, const RecordId &id)
+            : _enc(enc),
+              _id(id)
         {}
 
         bool operator()(const ftcxx::Slice &key, const ftcxx::Slice &val) const {
-            RecordId keyId = KVSortedDataImpl::extractRecordId(ftslice2slice(key));
             // We are looking for cases where the RecordId *doesn't* match.  So if they're equal,
             // return false so we don't consider this key.
-            return _id != keyId;
+            return _id != _enc.extractRecordId(key);
         }
     };
 
@@ -115,9 +116,9 @@ namespace mongo {
         try {
             ftcxx::Slice foundKey;
             ftcxx::Slice foundVal;
-            for (ftcxx::BufferedCursor<TokuFTDictionary::Comparator, DupKeyFilter> cur(
+            for (ftcxx::BufferedCursor<TokuFTDictionary::Encoding, DupKeyFilter> cur(
                      _db.buffered_cursor(_getDBTxn(opCtx), slice2ftslice(lookupLeft), slice2ftslice(lookupRight),
-                                         comparator(), DupKeyFilter(id), 0, true, false, true));
+                                         encoding(), DupKeyFilter(encoding(), id), 0, true, false, true));
                  cur.ok(); cur.next(foundKey, foundVal)) {
                 // If we found anything, it must have matched the filter, so it's a duplicate.
                 return Status(ErrorCodes::DuplicateKey, "E11000 duplicate key error");
@@ -201,7 +202,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn), slice2ftslice(key),
-                                         dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);
@@ -209,7 +210,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
-                                         dict.comparator(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);

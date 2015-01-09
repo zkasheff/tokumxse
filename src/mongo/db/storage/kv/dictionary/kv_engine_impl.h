@@ -102,22 +102,20 @@ namespace mongo {
     protected:
         // Create a KVDictionary (same rules as createRecordStore / createSortedDataInterface)
         // 
-        // param: cmp, the comparator that should be passed to the KVDictionary
-        virtual Status createKVDictionary( OperationContext* opCtx,
-                                           const StringData& ident,
-                                           const KVDictionary::Comparator &cmp,
-                                           const BSONObj& options,
-                                           bool isRecordStore ) = 0;
+        // param: enc, the encoding that should be passed to the KVDictionary
+        virtual Status createKVDictionary(OperationContext* opCtx,
+                                          const StringData& ident,
+                                          const KVDictionary::Encoding &enc,
+                                          const BSONObj& options) = 0;
 
         // Get a KVDictionary (same rules as getRecordStore / getSortedDataInterface)
         //
-        // param: cmp, the comparator that should be passed to the KVDictionary
-        virtual KVDictionary* getKVDictionary( OperationContext* opCtx,
-                                               const StringData& ident,
-                                               const KVDictionary::Comparator &cmp,
-                                               const BSONObj& options,
-                                               bool isRecordStore,
-                                               bool mayCreate = false ) = 0;
+        // param: enc, the encoding that should be passed to the KVDictionary
+        virtual KVDictionary* getKVDictionary(OperationContext* opCtx,
+                                              const StringData& ident,
+                                              const KVDictionary::Encoding &enc,
+                                              const BSONObj& options,
+                                              bool mayCreate = false) = 0;
 
         // Drop a KVDictionary (same rules as dropRecordStore / dropSortedDataInterface)
         virtual Status dropKVDictionary( OperationContext* opCtx,

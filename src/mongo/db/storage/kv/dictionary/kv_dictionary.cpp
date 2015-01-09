@@ -29,25 +29,71 @@
  */
 
 #include "mongo/base/status.h"
+#include "mongo/db/storage/key_string.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary.h"
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
+#include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/kv/slice.h"
+#include "mongo/platform/endian.h"
 
 namespace mongo {
 
-    KVDictionary::Comparator::Comparator(const Slice &serialized) {
-        invariant(serialized.size() == 0);
+    namespace {
+
+        Ordering orderingDeserialize(const char *data) {
+            const unsigned *big = reinterpret_cast<const unsigned *>(data);
+            unsigned native = endian::bigToNative(*big);
+            return *reinterpret_cast<Ordering *>(&native);
+        }
+
+        void orderingSerialize(const Ordering &o, char *data) {
+            const unsigned *native = reinterpret_cast<const unsigned *>(&o);
+            unsigned big = endian::nativeToBig(*native);
+            const char *p = reinterpret_cast<const char *>(&big);
+            std::copy(p, p + (sizeof big), data);
+        }
+
     }
 
-    KVDictionary::Comparator KVDictionary::Comparator::useMemcmp() {
-        return Comparator();
+    KVDictionary::Encoding::Encoding()
+        : _isRecordStore(false),
+          _isIndex(false),
+          _ordering(Ordering::make(BSONObj()))
+    {}
+
+    KVDictionary::Encoding KVDictionary::Encoding::forRecordStore() {
+        return Encoding(true, false, Ordering::make(BSONObj()));
     }
 
-    Slice KVDictionary::Comparator::serialize() const {
-        return Slice();
+    KVDictionary::Encoding KVDictionary::Encoding::forIndex(const Ordering &o) {
+        return Encoding(false, true, o);
     }
 
-    int KVDictionary::Comparator::operator()(const Slice &a, const Slice &b) const {
+    KVDictionary::Encoding::Encoding(const Slice &serialized)
+        : _isRecordStore(serialized.size() > 0 && serialized.data()[0] == 0),
+          _isIndex(serialized.size() > 0 && serialized.data()[0] == 1),
+          _ordering(_isIndex
+                    ? orderingDeserialize(serialized.data() + 1)
+                    : Ordering::make(BSONObj()))
+    {
+        dassert(!(_isRecordStore && _isIndex));
+    }
+
+    Slice KVDictionary::Encoding::serialize() const {
+        if (_isRecordStore) {
+            char c = 0;
+            return Slice::of(c);
+        } else if (_isIndex) {
+            Slice s(1 + sizeof(Ordering));
+            s.mutableData()[0] = 1;
+            orderingSerialize(_ordering, s.mutableData() + 1);
+            return s;
+        } else {
+            return Slice();
+        }
+    }
+
+    int KVDictionary::Encoding::cmp(const Slice &a, const Slice &b) {
         const int cmp_len = std::min(a.size(), b.size());
         const int c = memcmp(a.data(), b.data(), cmp_len);
         if (c != 0) {
@@ -58,6 +104,20 @@ namespace mongo {
             return 1;
         } else {
             return 0;
+        }
+    }
+
+    BSONObj KVDictionary::Encoding::extractKey(const Slice &key) const {
+        dassert(isIndex());
+        return KVSortedDataImpl::extractKey(key, _ordering);
+    }
+
+    RecordId KVDictionary::Encoding::extractRecordId(const Slice &key) const {
+        if (isRecordStore()) {
+            return KeyString::decodeRecordIdStartingAt(key.data());
+        } else {
+            dassert(isIndex());
+            return KVSortedDataImpl::extractRecordId(key);
         }
     }
 

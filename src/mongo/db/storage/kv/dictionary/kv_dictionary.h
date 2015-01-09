@@ -54,21 +54,42 @@ namespace mongo {
         /**
          * Compares two binary keys in a KVDictionary. We use either an encoding of the RecordId
          * which is memcmpable or KeyString which also is.
+         *
+         * Also can describe whether we are a record store or an index, and can unpack an index's
+         * keys in that case.
          */
-        class Comparator {
-            Comparator() {}
+        class Encoding {
+            const bool _isRecordStore;
+            const bool _isIndex;
+            const Ordering _ordering;
+
+            Encoding(bool isRecordStore, bool isIndex, const Ordering &ordering)
+                : _isRecordStore(isRecordStore),
+                  _isIndex(isIndex),
+                  _ordering(ordering)
+            {}
 
         public:
             /**
-             * Return a Comparator object that compares keys using memcmp
-             * and sorts by length when keys contain a common prefix.
+             * An Encoding for raw bytes, compared with memcmp.
              */
-            static Comparator useMemcmp();
+            Encoding();
 
             /**
-             * Create a comparator from a serialized byte slice.
+             * An Encoding for a record store.
              */
-            explicit Comparator(const Slice &serialized);
+            static Encoding forRecordStore();
+
+            /**
+             * Return an Encoding object that compares keys using memcmp
+             * and sorts by length when keys contain a common prefix.
+             */
+            static Encoding forIndex(const Ordering &o);
+
+            /**
+             * Create an Encoding from a serialized byte slice.
+             */
+            explicit Encoding(const Slice &serialized);
 
             /**
              * Serialize this comparator into a byte slice that can later
@@ -87,7 +108,19 @@ namespace mongo {
              * == 0 iff a == b
              * > 0 iff a > b
              */
-            int operator()(const Slice &a, const Slice &b) const;
+            int operator()(const Slice &a, const Slice &b) const {
+                return cmp(a, b);
+            }
+
+            static int cmp(const Slice &a, const Slice &b);
+
+            bool isRecordStore() const { return _isRecordStore; }
+
+            bool isIndex() const { return _isIndex; }
+
+            BSONObj extractKey(const Slice &key) const;
+
+            RecordId extractRecordId(const Slice &key) const;
         };
 
         virtual ~KVDictionary() { }

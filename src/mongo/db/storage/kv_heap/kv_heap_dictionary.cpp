@@ -123,8 +123,8 @@ namespace mongo {
         _map.erase(it);
     }
 
-    KVHeapDictionary::KVHeapDictionary(const KVDictionary::Comparator cmp)
-        : _cmp(cmp),
+    KVHeapDictionary::KVHeapDictionary(const KVDictionary::Encoding &enc)
+        : _cmp(enc),
           _map(_cmp)
     {}
 

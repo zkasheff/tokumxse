@@ -79,7 +79,9 @@ env.CppUnitTest(
         ],
     LIBDEPS=[
         'kv_heap_dictionary',
+        '$BUILD_DIR/mongo/db/storage/key_string',
         '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_dictionary_test_harness',
+        '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_engine_impl',
         ]
     )
 

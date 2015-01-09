@@ -59,12 +59,7 @@ namespace mongo {
 
     namespace {
 
-        static int tokuft_bt_compare(const ftcxx::Slice &desc, const ftcxx::Slice &a, const ftcxx::Slice &b) {
-            TokuFTDictionary::Comparator cmp(desc);
-            return cmp(a, b);
-        }
-
-        static int tokuft_update(const ftcxx::Slice &desc,
+        int tokuft_update(const ftcxx::Slice &desc,
                                  const ftcxx::Slice &key, const ftcxx::Slice &oldVal,
                                  const ftcxx::Slice &extra, ftcxx::SetvalFunc setval) {
             boost::scoped_ptr<KVUpdateMessage> message(KVUpdateMessage::fromSerialized(ftslice2slice(extra)));
@@ -78,7 +73,7 @@ namespace mongo {
             return 0;
         }
 
-        static const char *getIndexName(DB *db) {
+        const char *getIndexName(DB *db) {
             if (db != NULL) {
                 return db->get_dname(db);
             } else {
@@ -86,42 +81,53 @@ namespace mongo {
             }
         }
 
-        static void prettyBounds(DB *db, const DBT *leftKey, const DBT *rightKey,
-                                 BSONArrayBuilder &bounds, bool isString, bool isInteger) {
+        void appendRecordId(RecordId id, BSONObjBuilder &b) {
+            if (id == RecordId::min()) {
+                b.append("RecordId", "min");
+            } else if (id == RecordId::max()) {
+                b.append("RecordId", "max");
+            } else if (id.isNull()) {
+                b.append("RecordId", "null");
+            } else {
+                b.appendNumber("RecordId", static_cast<long long>(id.repr()));
+            }
+        }
+
+        void appendBoundsEndpoint(TokuFTDictionary::Encoding &enc, const DBT *key, BSONArrayBuilder &bounds) {
+            ftcxx::Slice keySlice(static_cast<char *>(key->data), key->size);
+            if (enc.isRecordStore()) {
+                BSONObjBuilder b(bounds.subobjStart());
+                appendRecordId(enc.extractRecordId(keySlice), b);
+                b.doneFast();
+            } else if (enc.isIndex()) {
+                BSONObjBuilder b(bounds.subobjStart());
+                b.append("key", enc.extractKey(keySlice));
+                appendRecordId(enc.extractRecordId(keySlice), b);
+                b.doneFast();
+            } else {
+                bounds.append(StringData(keySlice.data(), keySlice.size()));
+            }
+        }
+
+        void prettyBounds(const ftcxx::DB &db, const DBT *leftKey, const DBT *rightKey, BSONArrayBuilder &bounds) {
+            TokuFTDictionary::Encoding enc(db.descriptor());
             if (leftKey->data == NULL) {
                 bounds.append("-infinity");
             } else {
-                if (isString) {
-                    bounds.append(StringData(static_cast<char *>(leftKey->data), leftKey->size));
-                } else if (isInteger) {
-                    BSONObjBuilder b(bounds.subobjStart());
-                    b.appendNumber("record_id", Slice(static_cast<char *>(leftKey->data), leftKey->size).as<uint64_t>());
-                    b.doneFast();
-                } else {
-                    // TODO: get the ordering down to this level and use KVSortedDataImpl::extractKey
-                    bounds.append(KeyString::toBson((const char *)leftKey->data, leftKey->size, Ordering::make(BSONObj())));
-                }
+                appendBoundsEndpoint(enc, leftKey, bounds);
             }
 
             if (rightKey->data == NULL) {
                 bounds.append("+infinity");
             } else {
-                if (isString) {
-                    bounds.append(StringData(static_cast<char *>(rightKey->data), rightKey->size));
-                } else if (isInteger) {
-                    BSONObjBuilder b(bounds.subobjStart());
-                    b.appendNumber("record_id", Slice(static_cast<char *>(rightKey->data), rightKey->size).as<uint64_t>());
-                    b.doneFast();
-                } else {
-                    bounds.append(KeyString::toBson((const char *)rightKey->data, rightKey->size, Ordering::make(BSONObj())));
-                }
+                appendBoundsEndpoint(enc, rightKey, bounds);
             }
         }
 
 
-        static int iterateTransactionsCallback(uint64_t txnid, uint64_t clientId,
-                                               iterate_row_locks_callback iterateLocks,
-                                               void *locksExtra, void *extra) {
+        int iterateTransactionsCallback(uint64_t txnid, uint64_t clientId,
+                                        iterate_row_locks_callback iterateLocks,
+                                        void *locksExtra, void *extra) {
             try {
                 // We ignore clientId because txnid is sufficient for finding
                 // the associated operation in db.currentOp()
@@ -138,12 +144,9 @@ namespace mongo {
                             break;
                         }
                         BSONObjBuilder rowLock(locks.subobjStart());
-                        StringData indexName(getIndexName(db));
-                        bool isMetadata = indexName == "tokuft.metadata" || indexName == "tokuft-internal.metadata";
-                        bool isRecordStore = indexName.startsWith("collection");
-                        rowLock.append("index", indexName);
+                        rowLock.append("index", getIndexName(db));
                         BSONArrayBuilder bounds(rowLock.subarrayStart("bounds"));
-                        prettyBounds(db, &leftKey, &rightKey, bounds, isMetadata, isRecordStore);
+                        prettyBounds(ftcxx::DB(db), &leftKey, &rightKey, bounds);
                         bounds.doneFast();
                         rowLock.doneFast();
                     }
@@ -163,22 +166,19 @@ namespace mongo {
             }
         }
 
-        static int pendingLockRequestsCallback(DB *db, uint64_t requestingTxnid,
-                                               const DBT *leftKey, const DBT *rightKey,
-                                               uint64_t blockingTxnid, uint64_t startTime,
-                                               void *extra) {
+        int pendingLockRequestsCallback(DB *db, uint64_t requestingTxnid,
+                                        const DBT *leftKey, const DBT *rightKey,
+                                        uint64_t blockingTxnid, uint64_t startTime,
+                                        void *extra) {
             try {
                 BSONObjBuilder status;
-                StringData indexName(getIndexName(db));
-                bool isMetadata = indexName == "tokuft.metadata" || indexName == "tokuft-internal.metadata";
-                bool isRecordStore = indexName.startsWith("collection");
-                status.append("index", indexName);
+                status.append("index", getIndexName(db));
                 status.appendNumber("requestingTxnid", requestingTxnid);
                 status.appendNumber("blockingTxnid", blockingTxnid);
                 status.appendDate("started", startTime);
                 {
                     BSONArrayBuilder bounds(status.subarrayStart("bounds"));
-                    prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
+                    prettyBounds(ftcxx::DB(db), leftKey, rightKey, bounds);
                     bounds.doneFast();
                 }
                 LOG(2) << "TokuFT: pending lock: " << status.done();
@@ -195,28 +195,20 @@ namespace mongo {
             }
         }
 
-        static void lockNotGrantedCallback(DB *db, uint64_t requestingTxnid,
-                                           const DBT *leftKey, const DBT *rightKey,
-                                           uint64_t blockingTxnid) {
+        void lockNotGrantedCallback(DB *db, uint64_t requestingTxnid,
+                                    const DBT *leftKey, const DBT *rightKey,
+                                    uint64_t blockingTxnid) {
             try {
                 if (!logger::globalLogDomain()->shouldLog(MONGO_LOG_DEFAULT_COMPONENT, LogstreamBuilder::severityCast(1))) {
                     return;
                 }
 
-                StringData indexName(getIndexName(db));
-                bool isMetadata = indexName == "tokuft.metadata" || indexName == "tokuft-internal.metadata";
-                bool isRecordStore = indexName.startsWith("collection");
-                if (!isMetadata && !isRecordStore && !indexName.startsWith("index")) {
-                    LOG(1) << "TokuFT: lock not granted on internal dictionary \"" << indexName << "\", will not attempt to decode.";
-                    return;
-                }
-
                 BSONObjBuilder info;
-                info.append("index", indexName);
+                info.append("index", getIndexName(db));
                 info.appendNumber("requestingTxnid", requestingTxnid);
                 info.appendNumber("blockingTxnid", blockingTxnid);
                 BSONArrayBuilder bounds(info.subarrayStart("bounds"));
-                prettyBounds(db, leftKey, rightKey, bounds, isMetadata, isRecordStore);
+                prettyBounds(ftcxx::DB(db), leftKey, rightKey, bounds);
                 bounds.doneFast();
                 LOG(1) << "TokuFT: lock not granted, details: " << info.done();
 
@@ -276,16 +268,15 @@ namespace mongo {
 
         LOG(1) << "TokuFT: opening environment at " << path;
         _env = builder
-               .set_default_bt_compare(&ftcxx::wrapped_comparator<tokuft_bt_compare>)
                .set_update(&ftcxx::wrapped_updater<tokuft_update>)
                .open(path.c_str(), env_flags, env_mode);
 
         ftcxx::DBTxn txn(_env);
         _metadataDict.reset(
-            new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Comparator::useMemcmp(),
+            new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Encoding(),
                                  tokuftGlobalOptions.collectionOptions));
         _internalMetadataDict.reset(
-            new TokuFTDictionary(_env, txn, "tokuft-internal.metadata", KVDictionary::Comparator::useMemcmp(),
+            new TokuFTDictionary(_env, txn, "tokuft-internal.metadata", KVDictionary::Encoding(),
                                  tokuftGlobalOptions.collectionOptions));
         txn.commit();
 
@@ -304,10 +295,14 @@ namespace mongo {
         _env.close();
     }
 
-    static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
-        TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
-        invariant(ru != NULL);
-        return ru->txn(opCtx);
+    namespace {
+
+        const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
+            TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
+            invariant(ru != NULL);
+            return ru->txn(opCtx);
+        }
+
     }
 
     RecoveryUnit *TokuFTEngine::newRecoveryUnit() {
@@ -341,11 +336,10 @@ namespace mongo {
 
     Status TokuFTEngine::createKVDictionary(OperationContext* opCtx,
                                             const StringData& ident,
-                                            const KVDictionary::Comparator &cmp,
-                                            const BSONObj& options,
-                                            bool isRecordStore) {
+                                            const KVDictionary::Encoding &enc,
+                                            const BSONObj& options) {
         WriteUnitOfWork wuow(opCtx);
-        TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, cmp, _createOptions(options, isRecordStore));
+        TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, enc, _createOptions(options, enc.isRecordStore()));
         invariant(dict.db().db() != NULL);
         wuow.commit();
 
@@ -354,12 +348,11 @@ namespace mongo {
 
     KVDictionary* TokuFTEngine::getKVDictionary(OperationContext* opCtx,
                                                 const StringData& ident,
-                                                const KVDictionary::Comparator &cmp,
+                                                const KVDictionary::Encoding &enc,
                                                 const BSONObj& options,
-                                                bool isRecordStore,
                                                 bool mayCreate) {
         // TODO: mayCreate
-        return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, cmp, _createOptions(options, isRecordStore));
+        return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, enc, _createOptions(options, enc.isRecordStore()));
     }
 
     Status TokuFTEngine::dropKVDictionary(OperationContext* opCtx,
@@ -382,17 +375,16 @@ namespace mongo {
         std::copy(ident.begin(), ident.end(), key.mutable_data());
         key.mutable_data()[ident.size()] = '\0';
 
-        typedef ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> DirectoryCursor;
+        typedef ftcxx::BufferedCursor<TokuFTDictionary::Encoding, ftcxx::DB::NullFilter> DirectoryCursor;
         DirectoryCursor cur(_env.buffered_cursor(_getDBTxn(opCtx),
-                                                 TokuFTDictionary::Comparator(KVDictionary::Comparator::useMemcmp()),
+                                                 TokuFTDictionary::Encoding(KVDictionary::Encoding()),
                                                  ftcxx::DB::NullFilter()));
-        TokuFTDictionary::Comparator cmp(KVDictionary::Comparator::useMemcmp());
         cur.seek(key);
         while (cur.ok()) {
             ftcxx::Slice foundKey;
             ftcxx::Slice foundVal;
             cur.next(foundKey, foundVal);
-            int c = cmp(foundKey, key);
+            int c = TokuFTDictionary::Encoding::cmp(foundKey, key);
             if (c == 0) {
                 return true;
             } else if (c > 0) {
@@ -407,9 +399,9 @@ namespace mongo {
 
         ftcxx::Slice key;
         ftcxx::Slice val;
-        typedef ftcxx::BufferedCursor<TokuFTDictionary::Comparator, ftcxx::DB::NullFilter> DirectoryCursor;
+        typedef ftcxx::BufferedCursor<TokuFTDictionary::Encoding, ftcxx::DB::NullFilter> DirectoryCursor;
         for (DirectoryCursor cur(_env.buffered_cursor(_getDBTxn(opCtx),
-                                                      TokuFTDictionary::Comparator(KVDictionary::Comparator::useMemcmp()),
+                                                      TokuFTDictionary::Encoding(KVDictionary::Encoding()),
                                                       ftcxx::DB::NullFilter()));
              cur.next(key, val); ) {
             if (key.size() == 0) {
