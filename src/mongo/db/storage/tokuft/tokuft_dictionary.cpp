@@ -36,6 +36,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/catalog/collection_options.h"
 #include "mongo/db/index/index_descriptor.h"
+#include "mongo/db/storage/kv/dictionary/kv_sorted_data_impl.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary_options.h"
@@ -95,28 +96,28 @@ namespace mongo {
     }
 
     class DupKeyFilter {
-        ftcxx::Slice _suffix;
+        RecordId _id;
 
     public:
-        DupKeyFilter(const Slice &suffix)
-            : _suffix(slice2ftslice(suffix))
+        DupKeyFilter(const RecordId &id)
+            : _id(id)
         {}
 
         bool operator()(const ftcxx::Slice &key, const ftcxx::Slice &val) const {
+            RecordId keyId = KVSortedDataImpl::extractRecordId(ftslice2slice(key));
             // We are looking for cases where the RecordId *doesn't* match.  So if they're equal,
             // return false so we don't consider this key.
-            invariant(key.size() >= _suffix.size());
-            return !std::equal(_suffix.begin(), _suffix.end(), key.end() - _suffix.size());
+            return _id != keyId;
         }
     };
 
-    Status TokuFTDictionary::dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const Slice &exactMatchSuffix) {
+    Status TokuFTDictionary::dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const RecordId &id) {
         try {
             ftcxx::Slice foundKey;
             ftcxx::Slice foundVal;
             for (ftcxx::BufferedCursor<TokuFTDictionary::Comparator, DupKeyFilter> cur(
                      _db.buffered_cursor(_getDBTxn(opCtx), slice2ftslice(lookupLeft), slice2ftslice(lookupRight),
-                                         comparator(), DupKeyFilter(exactMatchSuffix), 0, true, false, true));
+                                         comparator(), DupKeyFilter(id), 0, true, false, true));
                  cur.ok(); cur.next(foundKey, foundVal)) {
                 // If we found anything, it must have matched the filter, so it's a duplicate.
                 return Status(ErrorCodes::DuplicateKey, "E11000 duplicate key error");

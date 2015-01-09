@@ -111,7 +111,7 @@ namespace mongo {
 
         virtual Status get(OperationContext *opCtx, const Slice &key, Slice &value) const;
 
-        virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const Slice &exactMatchKey);
+        virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const RecordId &id);
         virtual bool supportsDupKeyCheck() const {
             return true;
         }

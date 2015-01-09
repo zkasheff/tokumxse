@@ -136,7 +136,7 @@ namespace mongo {
                      ? _db->dupKeyCheck(txn,
                                         Slice::of(KeyString::make(key, _ordering, RecordId::min())),
                                         Slice::of(KeyString::make(key, _ordering, RecordId::max())),
-                                        Slice::of(loc))
+                                        loc)
                      : dupKeyCheck(txn, key, loc));
                 if (s == ErrorCodes::DuplicateKey) {
                     // Adjust the message to include the key.

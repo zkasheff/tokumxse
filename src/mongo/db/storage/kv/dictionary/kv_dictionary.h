@@ -165,11 +165,11 @@ namespace mongo {
          * The implementation must do a query for anything in the range [lookupLeft, lookupRight].
          *
          * If nothing is found, it can return Status::OK().
-         * If something is found, compare its suffix with exactMatchSuffix:
-         *  - If it's identical to exactMatchSuffix, then also return Status::OK().
+         * If something is found, compare its RecordId with id:
+         *  - If they're identical, then also return Status::OK().
          *  - Otherwise, return Status(ErrorCodes::DuplicateKey, ...).
          */
-        virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const Slice &exactMatchSuffix) {
+        virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const RecordId &id) {
             invariant(false);
             return Status::OK();
         }
