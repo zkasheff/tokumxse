@@ -58,7 +58,8 @@ namespace mongo {
 
     TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
                                        const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options)
-        : _db(ftcxx::DBBuilder()
+        : _options(options),
+          _db(ftcxx::DBBuilder()
               .set_readpagesize(options.readPageSize)
               .set_pagesize(options.pageSize)
               .set_compression_method(options.compressionMethod())
@@ -177,8 +178,19 @@ namespace mongo {
     }
 
     bool TokuFTDictionary::appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const {
-        // TODO: stat64
-        return false;
+        BSONObjBuilder b(result->subobjStart("tokuft"));
+        KVDictionary::Stats stats = getStats();
+        {
+            BSONObjBuilder sizeBuilder(b.subobjStart("size"));
+            sizeBuilder.appendNumber("uncompressed", static_cast<long long>(stats.dataSize));
+            sizeBuilder.appendNumber("compressed", static_cast<long long>(stats.storageSize));
+            sizeBuilder.doneFast();
+        }
+        b.appendNumber("numElements", static_cast<long long>(stats.numKeys));
+
+        b.append("createOptions", _options.toBSON());
+        b.doneFast();
+        return true;
     }
 
     Status TokuFTDictionary::setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info ) {

@@ -39,6 +39,7 @@
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/record_data.h"
+#include "mongo/db/storage/tokuft/tokuft_dictionary_options.h"
 
 #include <ftcxx/cursor.hpp>
 #include <ftcxx/db.hpp>
@@ -164,6 +165,7 @@ namespace mongo {
             return TokuFTDictionary::Encoding(_db.descriptor());
         }
 
+        TokuFTDictionaryOptions _options;
         ftcxx::DB _db;
     };
 
