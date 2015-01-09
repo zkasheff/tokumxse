@@ -55,8 +55,8 @@ namespace mongo {
           _isOplog(NamespaceString::oplog(ns)),
           _idTracker(_engineSupportsDocLocking
                      ? (_isOplog
-                        ? static_cast<VisibleIdTracker *>(new OplogIdTracker())
-                        : static_cast<VisibleIdTracker *>(new CappedIdTracker()))
+                        ? static_cast<VisibleIdTracker *>(new OplogIdTracker(_nextIdNum.load()))
+                        : static_cast<VisibleIdTracker *>(new CappedIdTracker(_nextIdNum.load())))
                      : static_cast<VisibleIdTracker *>(new NoopIdTracker()))
     {}
 

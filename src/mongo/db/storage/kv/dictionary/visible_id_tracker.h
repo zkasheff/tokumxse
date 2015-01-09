@@ -74,8 +74,8 @@ namespace mongo {
         RecordId _highest;
 
     public:
-        CappedIdTracker()
-            : _highest(RecordId::min())
+        CappedIdTracker(int64_t nextIdNum)
+            : _highest(nextIdNum - 1)
         {}
 
         virtual ~CappedIdTracker() {}
@@ -136,6 +136,10 @@ namespace mongo {
 
     class OplogIdTracker : public CappedIdTracker {
     public:
+        OplogIdTracker(int64_t nextIdNum)
+            : CappedIdTracker(nextIdNum)
+        {}
+
         void setRecoveryUnitRestriction(KVRecoveryUnit *ru) const {
             if (!ru->hasSnapshot() || ru->getLowestInvisible().isNull()) {
                 ru->setLowestInvisible(lowestInvisible());
