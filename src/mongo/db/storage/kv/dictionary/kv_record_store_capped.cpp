@@ -175,7 +175,7 @@ namespace mongo {
 
     boost::optional<RecordId> KVRecordStoreCapped::oplogStartHack(OperationContext* txn,
                                                                   const RecordId& startingPosition) const {
-        if (!_engineSupportsDocLocking) {
+        if (!_isOplog) {
             return boost::none;
         }
 
