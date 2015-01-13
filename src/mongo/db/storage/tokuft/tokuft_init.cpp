@@ -78,6 +78,13 @@ namespace mongo {
         virtual Status validateIndexStorageOptions(const BSONObj& options) const {
             return TokuFTDictionaryOptions::validateOptions(options);
         }
+        virtual Status validateMetadata(const StorageEngineMetadata& metadata,
+                                        const StorageGlobalParams& params) const {
+            return Status::OK();
+        }
+        virtual BSONObj createMetadataOptions(const StorageGlobalParams& params) const {
+            return BSONObj();
+        }
     };
 
     MONGO_INITIALIZER_WITH_PREREQUISITES(TokuFTStorageEngineInit,
