@@ -1,6 +1,10 @@
 Import("env")
 Import("has_option")
 
+# Install tokumxse_stat.py
+env.Append(ARCHIVE_ADDITIONS = [env.File('scripts/tokumxse_stat.py')])
+env.Append(ARCHIVE_ADDITION_DIR_MAP = {'src/mongo/db/storage/tokuft/scripts': 'scripts'})
+
 if has_option("tokuft"):
 
     env.Library(
