@@ -31,6 +31,9 @@
 
 #include "mongo/db/concurrency/locker_noop.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/repl/member_state.h"
+#include "mongo/db/repl/repl_coordinator.h"
+#include "mongo/db/repl/repl_coordinator_global.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/db/storage/tokuft/tokuft_global_options.h"
 #include "mongo/util/log.h"
@@ -42,7 +45,7 @@ namespace mongo {
 
     TokuFTRecoveryUnit::TokuFTRecoveryUnit(const ftcxx::DBEnv &env) :
         // We use depth to track transaction nesting
-        _env(env), _txn(), _depth(0) {
+        _env(env), _txn(), _depth(0), _knowsAboutReplicationState(false) {
     }
 
     TokuFTRecoveryUnit::~TokuFTRecoveryUnit() {
@@ -166,6 +169,17 @@ namespace mongo {
             _txn = ftcxx::DBTxn(_env, flags);
         }
         return _txn;
+    }
+
+    bool TokuFTRecoveryUnit::isReplicaSetSecondary() {
+        if (!_knowsAboutReplicationState) {
+            repl::ReplicationCoordinator *coord = repl::getGlobalReplicationCoordinator();
+            _isReplicaSetSecondary = (coord != NULL &&
+                                      coord->getReplicationMode() == repl::ReplicationCoordinator::modeReplSet &&
+                                      coord->getCurrentMemberState().secondary());
+            _knowsAboutReplicationState = true;
+        }
+        return _isReplicaSetSecondary;
     }
 
 }  // namespace mongo

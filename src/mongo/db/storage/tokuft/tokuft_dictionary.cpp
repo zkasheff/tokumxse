@@ -72,10 +72,32 @@ namespace mongo {
         LOG(1) << "TokuFT: Opening dictionary \"" << ident << "\" with options " << options.toBSON();
     }
 
-    static const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
-        TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
-        invariant(ru != NULL);
-        return ru->txn(opCtx);
+    namespace {
+
+        TokuFTRecoveryUnit *_getTokuRU(OperationContext *opCtx) {
+            TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
+            invariant(ru != NULL);
+            return ru;
+        }
+
+        bool _isReplicaSetSecondary(OperationContext *opCtx) {
+            return _getTokuRU(opCtx)->isReplicaSetSecondary();
+        }
+
+        const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
+            return _getTokuRU(opCtx)->txn(opCtx);
+        }
+
+        int _getWriteFlags(OperationContext *opCtx) {
+            return _isReplicaSetSecondary(opCtx) ? DB_PRELOCKED_WRITE : 0;
+        }
+
+        int _getReadFlags(OperationContext *opCtx) {
+            return (_getDBTxn(opCtx).is_read_only() || _isReplicaSetSecondary(opCtx))
+                    ? DB_PRELOCKED | DB_PRELOCKED_WRITE
+                    : 0;
+        }
+
     }
 
     Status TokuFTDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value) const {
@@ -89,10 +111,8 @@ namespace mongo {
             }
         } cb(value);
 
-        int r = _db.getf_set(_getDBTxn(opCtx), slice2ftslice(key),
-                             // TODO: No doc-level locking yet, so never take locks on read.
-                             DB_PRELOCKED | DB_PRELOCKED_WRITE,
-                             cb);
+        const ftcxx::DBTxn &txn = _getDBTxn(opCtx);
+        int r = _db.getf_set(txn, slice2ftslice(key), _getReadFlags(opCtx), cb);
         return statusFromTokuFTError(r);
     }
 
@@ -114,6 +134,10 @@ namespace mongo {
     };
 
     Status TokuFTDictionary::dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const RecordId &id) {
+        if (_isReplicaSetSecondary(opCtx)) {
+            return Status::OK();
+        }
+
         try {
             ftcxx::Slice foundKey;
             ftcxx::Slice foundVal;
@@ -131,18 +155,18 @@ namespace mongo {
     }
 
     Status TokuFTDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value) {
-        int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value));
+        int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value), _getWriteFlags(opCtx));
         return statusFromTokuFTError(r);
     }
 
     Status TokuFTDictionary::update(OperationContext *opCtx, const Slice &key, const KVUpdateMessage &message) {
         Slice value = message.serialize();
-        int r = _db.update(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value));
+        int r = _db.update(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value), _getWriteFlags(opCtx));
         return statusFromTokuFTError(r);
     }
 
     Status TokuFTDictionary::remove(OperationContext *opCtx, const Slice &key) {
-        int r = _db.del(_getDBTxn(opCtx), slice2ftslice(key));
+        int r = _db.del(_getDBTxn(opCtx), slice2ftslice(key), _getWriteFlags(opCtx));
         return statusFromTokuFTError(r);
     }
 
@@ -214,7 +238,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn), slice2ftslice(key),
-                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+                                         dict.encoding(), ftcxx::DB::NullFilter(), _getReadFlags(txn), (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);
@@ -222,7 +246,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
-                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+                                         dict.encoding(), ftcxx::DB::NullFilter(), _getReadFlags(txn), (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);

@@ -79,6 +79,9 @@ namespace mongo {
         int _depth;
         Changes _changes;
 
+        bool _knowsAboutReplicationState;
+        bool _isReplicaSetSecondary;
+
         static bool _opCtxIsWriting(OperationContext *opCtx);
 
         static int _commitFlags();
@@ -91,6 +94,14 @@ namespace mongo {
         }
 
         const ftcxx::DBTxn &txn(OperationContext *opCtx);
+
+        /**
+         * ReplicationCoordinator::getCurrentMemberState takes a lock, which is why we'd like to
+         * cache this as long as we can.  The recovery unit is probably the longest lived object we
+         * have that is (hopefully) guaranteed not to outlast a state transition.  This doesn't
+         * quite belong here, but that's the rationale.
+         */
+        bool isReplicaSetSecondary();
     };
 
 }  // namespace mongo

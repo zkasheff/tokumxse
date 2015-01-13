@@ -35,6 +35,7 @@ if has_option("tokuft"):
             '$BUILD_DIR/mongo/bson',
             '$BUILD_DIR/mongo/db/catalog/collection_options',
             '$BUILD_DIR/mongo/db/index/index_descriptor',
+            '$BUILD_DIR/mongo/db/repl/repl_coordinator_global',
             '$BUILD_DIR/mongo/db/storage/bson_collection_catalog_entry',
             '$BUILD_DIR/mongo/db/storage/key_string',
             '$BUILD_DIR/mongo/db/storage/kv/dictionary/kv_engine_impl',
