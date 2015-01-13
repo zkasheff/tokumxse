@@ -61,7 +61,7 @@ namespace mongo {
     {}
 
     bool KVRecordStoreCapped::needsDelete(OperationContext* txn) const {
-        if (dataSize(txn) > _cappedMaxSize) {
+        if (dataSize(txn) >= _cappedMaxSize) {
             // .. too many bytes
             return true;
         }
