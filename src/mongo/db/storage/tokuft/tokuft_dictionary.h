@@ -129,7 +129,7 @@ namespace mongo {
             return true;
         }
 
-        virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value);
+        virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool skipPessimisticLocking);
 
         virtual bool updateSupported() const { return true; }
 

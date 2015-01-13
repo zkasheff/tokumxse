@@ -234,7 +234,7 @@ namespace mongo {
             invariant(status.code() == ErrorCodes::NoSuchKey);
         }
 
-        Status s = _db->insert(txn, Slice::of(key), value);
+        Status s = _db->insert(txn, Slice::of(key), value, true);
         if (!s.isOK()) {
             return s;
         }
@@ -290,7 +290,7 @@ namespace mongo {
         }
 
         // An update with a complete new image (data, len) is implemented as an overwrite insert.
-        status = _db->insert(txn, Slice::of(key), value);
+        status = _db->insert(txn, Slice::of(key), value, false);
         if (!status.isOK()) {
             return StatusWith<RecordId>(status);
         }

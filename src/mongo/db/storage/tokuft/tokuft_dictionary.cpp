@@ -88,8 +88,10 @@ namespace mongo {
             return _getTokuRU(opCtx)->txn(opCtx);
         }
 
-        int _getWriteFlags(OperationContext *opCtx) {
-            return _isReplicaSetSecondary(opCtx) ? DB_PRELOCKED_WRITE : 0;
+        int _getWriteFlags(OperationContext *opCtx, bool skipPessimisticLocking=false) {
+            return (skipPessimisticLocking || _isReplicaSetSecondary(opCtx))
+                    ? DB_PRELOCKED_WRITE
+                    : 0;
         }
 
         int _getReadFlags(OperationContext *opCtx) {
@@ -154,8 +156,8 @@ namespace mongo {
         return Status::OK();
     }
 
-    Status TokuFTDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value) {
-        int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value), _getWriteFlags(opCtx));
+    Status TokuFTDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool skipPessimisticLocking) {
+        int r = _db.put(_getDBTxn(opCtx), slice2ftslice(key), slice2ftslice(value), _getWriteFlags(opCtx, skipPessimisticLocking));
         return statusFromTokuFTError(r);
     }
 
@@ -238,7 +240,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn), slice2ftslice(key),
-                                         dict.encoding(), ftcxx::DB::NullFilter(), _getReadFlags(txn), (direction == 1))),
+                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);
@@ -246,7 +248,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
-                                         dict.encoding(), ftcxx::DB::NullFilter(), _getReadFlags(txn), (direction == 1))),
+                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);

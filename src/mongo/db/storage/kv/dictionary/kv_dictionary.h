@@ -141,7 +141,7 @@ namespace mongo {
          *
          * Return: Status::OK() success.
          */
-        virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value) = 0;
+        virtual Status insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool skipPessimisticLocking) = 0;
 
         /**
          * Remove `key' and its associated value from the dictionary, if

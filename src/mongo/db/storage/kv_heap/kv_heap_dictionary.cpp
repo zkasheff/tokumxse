@@ -137,7 +137,7 @@ namespace mongo {
         return Status(ErrorCodes::NoSuchKey, "not found");
     }
 
-    Status KVHeapDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value) {
+    Status KVHeapDictionary::insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool skipPessimisticLocking) {
         KVHeapRecoveryUnit *ru = KVHeapRecoveryUnit::getKVHeapRecoveryUnit(opCtx);
         SliceMap::const_iterator it = _map.find(key);
         if (it == _map.end()) {

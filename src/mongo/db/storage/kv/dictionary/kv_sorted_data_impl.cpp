@@ -158,7 +158,7 @@ namespace mongo {
                 // Gotta love that strong C type system, protecting us from all the important errors...
                 val = Slice(reinterpret_cast<const char *>(keyString.getTypeBits().getBuffer()), keyString.getTypeBits().getSize());
             }
-            s = _db->insert(txn, Slice::of(keyString), val);
+            s = _db->insert(txn, Slice::of(keyString), val, false);
         } catch (WriteConflictException) {
             if (!dupsAllowed) {
                 // If we see a WriteConflictException on a unique index, according to

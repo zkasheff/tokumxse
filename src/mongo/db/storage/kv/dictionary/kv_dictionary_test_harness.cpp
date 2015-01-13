@@ -54,7 +54,7 @@ namespace mongo {
             {
                 Slice value;
                 WriteUnitOfWork uow( opCtx.get() );
-                Status status = db->insert( opCtx.get(), hi, there );
+                Status status = db->insert( opCtx.get(), hi, there, false );
                 ASSERT( status.isOK() );
                 status = db->get( opCtx.get(), hi, value );
                 ASSERT( status.isOK() );
@@ -81,7 +81,7 @@ namespace mongo {
             scoped_ptr<OperationContext> opCtx( harnessHelper->newOperationContext() );
             {
                 WriteUnitOfWork uow( opCtx.get() );
-                Status status = db->insert( opCtx.get(), hi, there );
+                Status status = db->insert( opCtx.get(), hi, there, false );
                 ASSERT( status.isOK() );
                 uow.commit();
             }
@@ -91,7 +91,7 @@ namespace mongo {
             scoped_ptr<OperationContext> opCtx( harnessHelper->newOperationContext() );
             {
                 WriteUnitOfWork uow( opCtx.get() );
-                Status status = db->insert( opCtx.get(), apple, bears );
+                Status status = db->insert( opCtx.get(), apple, bears, false );
                 ASSERT( status.isOK() );
                 uow.commit();
             }
@@ -169,7 +169,7 @@ namespace mongo {
                 WriteUnitOfWork uow( opCtx.get() );
                 for (unsigned char i = 0; i < nKeys; i++) {
                     const Slice slice = Slice::of(i);
-                    Status status = db->insert( opCtx.get(), slice, slice );
+                    Status status = db->insert( opCtx.get(), slice, slice, false );
                     ASSERT( status.isOK() );
                 }
                 uow.commit();
@@ -211,7 +211,7 @@ namespace mongo {
                 WriteUnitOfWork uow( opCtx.get() );
                 for (unsigned char i = 0; i < nKeys; i++) {
                     const Slice slice = Slice::of(keys[i]);
-                    Status status = db->insert( opCtx.get(), slice, slice );
+                    Status status = db->insert( opCtx.get(), slice, slice, false );
                     ASSERT( status.isOK() );
                 }
                 uow.commit();
@@ -251,7 +251,7 @@ namespace mongo {
                 WriteUnitOfWork uow( opCtx.get() );
                 for (unsigned char i = 0; i < nKeys; i++) {
                     const Slice slice = Slice::of(keys[i]);
-                    Status status = db->insert( opCtx.get(), slice, slice );
+                    Status status = db->insert( opCtx.get(), slice, slice, false );
                     ASSERT( status.isOK() );
                 }
                 uow.commit();
@@ -304,7 +304,7 @@ namespace mongo {
                 WriteUnitOfWork uow( opCtx.get() );
                 for (unsigned char i = 0; i < nKeys; i++) {
                     const Slice slice = Slice::of(keys[i]);
-                    Status status = db->insert( opCtx.get(), slice, slice );
+                    Status status = db->insert( opCtx.get(), slice, slice, false );
                     ASSERT( status.isOK() );
                 }
                 uow.commit();
@@ -384,7 +384,7 @@ namespace mongo {
                 WriteUnitOfWork uow( opCtx.get() );
                 for (unsigned char i = 0; i < nKeys; i += 2) {
                     const Slice slice = Slice::of(keys[i]);
-                    Status status = db->insert( opCtx.get(), slice, slice );
+                    Status status = db->insert( opCtx.get(), slice, slice, false );
                     ASSERT( status.isOK() );
                 }
                 uow.commit();

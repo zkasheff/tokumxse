@@ -101,7 +101,7 @@ namespace mongo {
 
         Status get(OperationContext *opCtx, const Slice &key, Slice &value) const;
 
-        Status insert(OperationContext *opCtx, const Slice &key, const Slice &value);
+        Status insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool skipPessimisticLocking);
 
         void rollbackInsertByDeleting(const Slice &key);
 

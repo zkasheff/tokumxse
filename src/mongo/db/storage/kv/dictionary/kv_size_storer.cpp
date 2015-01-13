@@ -211,7 +211,7 @@ namespace mongo {
                 Slice key(ident);
                 Slice value(data.objdata(), data.objsize());
 
-                Status s = _metadataDict->insert(opCtx, key, value);
+                Status s = _metadataDict->insert(opCtx, key, value, false);
                 massert(28609, str::stream() << "KVSizeStorer::storeInto: insert: " << s.toString(), s.isOK());
             }
             wuow.commit();
