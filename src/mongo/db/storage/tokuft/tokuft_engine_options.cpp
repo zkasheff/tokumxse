@@ -47,6 +47,7 @@ namespace mongo {
           journalCommitInterval(100),
           lockTimeout(100),
           locktreeMaxMemory(0),  // let this be the ft default, computed from cacheSize
+          directoryForIndexes(false),
           compressBuffersBeforeEviction(false),
           numCachetableBucketMutexes(1<<20)
     {}
@@ -70,6 +71,9 @@ namespace mongo {
                 "tokuftEngineLockTimeout", moe::Int, "TokuFT engine lock wait timeout (ms)");
         tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.locktreeMaxMemory",
                 "tokuftEngineLocktreeMaxMemory", moe::UnsignedLongLong, "TokuFT locktree size (bytes)");
+        // TODO: MSE-39
+        //tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.directoryForIndexes",
+        //        "tokuftEngineDirectoryForIndexes", moe::Bool, "TokuFT use a separate directory for indexes");
         tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.compressBuffersBeforeEviction",
                 "tokuftEngineCompressBuffersBeforeEviction", moe::Bool, "TokuFT engine compress buffers before eviction");
         tokuftOptions.addOptionChaining("storage.tokuft.engineOptions.numCachetableBucketMutexes",
@@ -153,6 +157,10 @@ namespace mongo {
                 warning() << "TokuFT: locktreeMaxMemory is under 100MB, this is not recommended for production." << std::endl;
             }
         }
+        // TODO: MSE-39
+        //if (params.count("storage.tokuft.engineOptions.directoryForIndexes")) {
+        //    directoryForIndexes = params["storage.tokuft.engineOptions.directoryForIndexes"].as<bool>();
+        //}
         if (params.count("storage.tokuft.engineOptions.compressBuffersBeforeEviction")) {
             compressBuffersBeforeEviction = params["storage.tokuft.engineOptions.compressBuffersBeforeEviction"].as<bool>();
         }

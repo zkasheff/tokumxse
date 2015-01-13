@@ -34,8 +34,10 @@
 #include "mongo/db/global_environment_experiment.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
+#include "mongo/db/storage/storage_engine_metadata.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary_options.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
+#include "mongo/db/storage/tokuft/tokuft_global_options.h"
 #include "mongo/util/log.h"
 
 namespace mongo {
@@ -46,13 +48,13 @@ namespace mongo {
         bool _durable;
 
     public:
-        TokuFTStorageEngine(const std::string &path, bool durable)
-            : KVStorageEngine(new TokuFTEngine(path)),
+        TokuFTStorageEngine(const std::string &path, bool durable, const KVStorageEngineOptions &options)
+            : KVStorageEngine(new TokuFTEngine(path), options),
               _durable(durable)
         {
             if (!_durable) {
-                warning() << "TokuFT: Initializing with --nojournal.  Note that this will cause {j: true} writes to fail, but will not actually disable journaling." << std::endl;
-                warning() << "TokuFT: This is only for tests, there is no reason to run with --nojournal in production." << std::endl;
+                warning() << "TokuFT: Initializing with --nojournal.  Note that this will cause {j: true} writes to fail, but will not actually disable journaling.";
+                warning() << "TokuFT: This is only for tests, there is no reason to run with --nojournal in production.";
             }
         }
 
@@ -67,7 +69,22 @@ namespace mongo {
         virtual ~TokuFTFactory() { }
         virtual StorageEngine *create(const StorageGlobalParams &params,
                                       const StorageEngineLockFile &lockFile) const {
-            return new TokuFTStorageEngine(params.dbpath, params.dur);
+            if (params.directoryperdb) {
+                severe() << "TokuFT: directoryPerDB not yet supported.  This option is incompatible with TokuFT.";
+                severe() << "TokuFT: The following server crash is intentional.";
+                fassertFailed(28610);
+            }
+            if (tokuftGlobalOptions.engineOptions.directoryForIndexes) {
+                severe() << "TokuFT: directoryForIndexes not yet supported.  This option is incompatible with TokuFT.";
+                severe() << "TokuFT: The following server crash is intentional.";
+                fassertFailed(28611);
+            }
+
+            KVStorageEngineOptions options;
+            options.directoryPerDB = params.directoryperdb;
+            options.directoryForIndexes = tokuftGlobalOptions.engineOptions.directoryForIndexes;
+            options.forRepair = params.repair;
+            return new TokuFTStorageEngine(params.dbpath, params.dur, options);
         }
         virtual StringData getCanonicalName() const {
             return "tokuft";
@@ -80,10 +97,26 @@ namespace mongo {
         }
         virtual Status validateMetadata(const StorageEngineMetadata& metadata,
                                         const StorageGlobalParams& params) const {
+            Status status = metadata.validateStorageEngineOption(
+                "directoryPerDB", params.directoryperdb);
+            if (!status.isOK()) {
+                return status;
+            }
+
+            status = metadata.validateStorageEngineOption(
+                "directoryForIndexes", tokuftGlobalOptions.engineOptions.directoryForIndexes);
+            if (!status.isOK()) {
+                return status;
+            }
+
             return Status::OK();
         }
         virtual BSONObj createMetadataOptions(const StorageGlobalParams& params) const {
-            return BSONObj();
+            BSONObjBuilder builder;
+            builder.appendBool("directoryPerDB", params.directoryperdb);
+            builder.appendBool("directoryForIndexes",
+                               tokuftGlobalOptions.engineOptions.directoryForIndexes);
+            return builder.obj();
         }
     };
 

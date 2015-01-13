@@ -53,6 +53,7 @@ namespace mongo {
         int journalCommitInterval;
         int lockTimeout;
         unsigned long long locktreeMaxMemory;
+        bool directoryForIndexes;
 
         // advanced
         bool compressBuffersBeforeEviction;
