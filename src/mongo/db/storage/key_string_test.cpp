@@ -38,6 +38,10 @@
 
 using namespace mongo;
 
+BSONObj toBson(const KeyString& ks, Ordering ord) {
+    return KeyString::toBson(ks.getBuffer(), ks.getSize(), ord, ks.getTypeBits());
+}
+
 Ordering ALL_ASCENDING = Ordering::make(BSONObj());
 Ordering ONE_ASCENDING = Ordering::make(BSON("a" << 1));
 Ordering ONE_DESCENDING = Ordering::make(BSON("a" << -1));
@@ -52,16 +56,17 @@ TEST(KeyStringTest, Simple1) {
                      KeyString::make(b, ALL_ASCENDING, RecordId()));
 }
 
-#define ROUNDTRIP_ORDER(x, order) do {                                  \
-        BSONObj _obj = x;                                               \
-        KeyString ks = KeyString::make(_obj, order);                    \
-        ASSERT_EQUALS(_obj, ks.toBson(order));                          \
+#define ROUNDTRIP_ORDER(x, order) do {                           \
+        const BSONObj _orig = x;                                 \
+        const KeyString _ks = KeyString::make(_orig, order);     \
+        const BSONObj _converted = toBson(_ks, order);           \
+        ASSERT_EQ(_converted, _orig);                            \
+        ASSERT(_converted.binaryEqual(_orig));                   \
     } while (0)
 
 #define ROUNDTRIP(x) do {                                            \
         ROUNDTRIP_ORDER(x, ALL_ASCENDING);                           \
-        ROUNDTRIP_ORDER(x, Ordering::make(BSON("a" << 1)));          \
-        ROUNDTRIP_ORDER(x, Ordering::make(BSON("a" << -1)));         \
+        ROUNDTRIP_ORDER(x, ONE_DESCENDING);                          \
     } while (0)
 
 #define COMPARES_SAME(_x,_y) do {                                \
@@ -372,6 +377,10 @@ const std::vector<BSONObj>& getInterestingElements() {
     if (!elements.empty()) {
         return elements;
     }
+    
+    // These are used to test strings that include NUL bytes.
+    const StringData ball("ball", StringData::LiteralTag());
+    const StringData ball00n("ball\0\0n", StringData::LiteralTag());
 
     elements.push_back(BSON("" << 1));
     elements.push_back(BSON("" << 1.0));
@@ -381,17 +390,11 @@ const std::vector<BSONObj>& getInterestingElements() {
     elements.push_back(BSON("" << 112353998331165715LL));
     elements.push_back(BSON("" << 112353998331165710LL));
     elements.push_back(BSON("" << 1123539983311657199LL));
-
-    // todo: I think this behavior is good, but woCompare is wrong
-    //elements.push_back(BSON("" << 123456789123456789.123));
-    //elements.push_back(BSON("" << -123456789123456789.123));
-    //elements.push_back(BSON("" << 112353998331165715.0));
-    //elements.push_back(BSON("" << 112353998331165710.0));
-    //elements.push_back(BSON("" << 1123539983311657199.0));
-
-    elements.push_back(BSON("" << std::numeric_limits<double>::quiet_NaN()));
-    elements.push_back(BSON("" << 0.0));
-    elements.push_back(BSON("" << -0.0));
+    elements.push_back(BSON("" << 123456789123456789.123));
+    elements.push_back(BSON("" << -123456789123456789.123));
+    elements.push_back(BSON("" << 112353998331165715.0));
+    elements.push_back(BSON("" << 112353998331165710.0));
+    elements.push_back(BSON("" << 1123539983311657199.0));
     elements.push_back(BSON("" << 5.0));
     elements.push_back(BSON("" << 5));
     elements.push_back(BSON("" << 2));
@@ -401,80 +404,201 @@ const std::vector<BSONObj>& getInterestingElements() {
     elements.push_back(BSON("" << 12312312.2123123123123));
     elements.push_back(BSON("" << "aaa"));
     elements.push_back(BSON("" << "AAA"));
+    elements.push_back(BSON("" << ball));
+    elements.push_back(BSON("" << ball00n));
+    elements.push_back(BSON("" << BSONSymbol(ball)));
+    elements.push_back(BSON("" << BSONSymbol(ball00n)));
     elements.push_back(BSON("" << BSON("a" << 5)));
+    elements.push_back(BSON("" << BSON("a" << 6)));
+    elements.push_back(BSON("" << BSON("b" << 6)));
     elements.push_back(BSON("" << BSON_ARRAY("a" << 5)));
     elements.push_back(BSON("" << BSONNULL));
     elements.push_back(BSON("" << BSONUndefined));
-    elements.push_back(BSON("" << 5 << "" << 7));
     elements.push_back(BSON("" << OID("abcdefabcdefabcdefabcdef")));
     elements.push_back(BSON("" << Date_t(123)));
     elements.push_back(BSON("" << BSONCode("abc_code")));
-    elements.push_back(BSON("" << BSONCodeWScope("def_code", BSON("x_scope" << "a"))));
+    elements.push_back(BSON("" << BSONCode(ball)));
+    elements.push_back(BSON("" << BSONCode(ball00n)));
+    elements.push_back(BSON("" << BSONCodeWScope("def_code1", BSON("x_scope" << "a"))));
+    elements.push_back(BSON("" << BSONCodeWScope("def_code2", BSON("x_scope" << "a"))));
+    elements.push_back(BSON("" << BSONCodeWScope("def_code2", BSON("x_scope" << "b"))));
+    elements.push_back(BSON("" << BSONCodeWScope(ball, BSON("a" << 1))));
+    elements.push_back(BSON("" << BSONCodeWScope(ball00n, BSON("a" << 1))));
+    elements.push_back(BSON("" << true));
+    elements.push_back(BSON("" << false));
+
+    // Something that needs multiple bytes of typeBits
+    elements.push_back(BSON("" << BSON_ARRAY(""
+                                          << BSONSymbol("")
+                                          << 0
+                                          << 0ll
+                                          << 0.0
+                                          << -0.0
+                                          )));
+
+    //
+    // Interesting numeric cases
+    //
+
+    elements.push_back(BSON("" << 0));
+    elements.push_back(BSON("" << 0ll));
+    elements.push_back(BSON("" << 0.0));
+    elements.push_back(BSON("" << -0.0));
+    elements.push_back(BSON("" << std::numeric_limits<double>::quiet_NaN()));
+    elements.push_back(BSON("" << std::numeric_limits<double>::infinity()));
+    elements.push_back(BSON("" << -std::numeric_limits<double>::infinity()));
+    elements.push_back(BSON("" << std::numeric_limits<double>::max()));
+    elements.push_back(BSON("" << -std::numeric_limits<double>::max()));
+    elements.push_back(BSON("" << std::numeric_limits<double>::min()));
+    elements.push_back(BSON("" << -std::numeric_limits<double>::min()));
+    elements.push_back(BSON("" << std::numeric_limits<double>::denorm_min()));
+    elements.push_back(BSON("" << -std::numeric_limits<double>::denorm_min()));
+    elements.push_back(BSON("" << std::numeric_limits<double>::denorm_min()));
+    elements.push_back(BSON("" << -std::numeric_limits<double>::denorm_min()));
+
+    elements.push_back(BSON("" << std::numeric_limits<long long>::max()));
+    elements.push_back(BSON("" << -std::numeric_limits<long long>::max()));
+    elements.push_back(BSON("" << std::numeric_limits<long long>::min()));
+
+    elements.push_back(BSON("" << std::numeric_limits<int>::max()));
+    elements.push_back(BSON("" << -std::numeric_limits<int>::max()));
+    elements.push_back(BSON("" << std::numeric_limits<int>::min()));
+
+    for (int powerOfTwo = 0; powerOfTwo < 63; powerOfTwo++) {
+        const long long lNum = 1ll << powerOfTwo;
+        const double dNum = double(lNum);
+
+        // All powers of two in this range can be represented exactly as doubles.
+        invariant(lNum == static_cast<long long>(dNum));
+
+        elements.push_back(BSON("" << lNum));
+        elements.push_back(BSON("" << -lNum));
+
+        elements.push_back(BSON("" << dNum));
+        elements.push_back(BSON("" << -dNum));
 
 
-    {
-        BSONObjBuilder b;
-        b.appendBool("", true);
-        elements.push_back(b.obj());
+        elements.push_back(BSON("" << (lNum + 1)));
+        elements.push_back(BSON("" << (lNum - 1)));
+        elements.push_back(BSON("" << (-lNum + 1)));
+        elements.push_back(BSON("" << (-lNum - 1)));
+
+        if (powerOfTwo <= 52) { // is dNum - 0.5 representable?
+            elements.push_back(BSON("" << (dNum - 0.5)));
+            elements.push_back(BSON("" << -(dNum - 0.5)));
+        }
+
+        if (powerOfTwo <= 51) { // is dNum + 0.5 representable?
+            elements.push_back(BSON("" << (dNum + 0.5)));
+            elements.push_back(BSON("" << -(dNum + 0.5)));
+        }
     }
 
     {
-        BSONObjBuilder b;
-        b.appendBool("", false);
-        elements.push_back(b.obj());
+        // Numbers around +/- numeric_limits<long long>::max() which can't be represented
+        // precisely as a double.
+        const long long maxLL = std::numeric_limits<long long>::max();
+        const double closestAbove = 9223372036854775808.0; // 2**63
+        const double closestBelow = 9223372036854774784.0; // 2**63 - epsilon
+
+        elements.push_back(BSON("" << maxLL));
+        elements.push_back(BSON("" << (maxLL - 1)));
+        elements.push_back(BSON("" << closestAbove));
+        elements.push_back(BSON("" << closestBelow));
+
+        elements.push_back(BSON("" << -maxLL));
+        elements.push_back(BSON("" << -(maxLL - 1)));
+        elements.push_back(BSON("" << -closestAbove));
+        elements.push_back(BSON("" << -closestBelow));
     }
 
     {
-        BSONObjBuilder b;
-        b.appendBool("", false);
-        elements.push_back(b.obj());
+        // Numbers around numeric_limits<long long>::min() which can be represented precisely as
+        // a double, but not as a positive long long.
+        const long long minLL = std::numeric_limits<long long>::min();
+        const double closestBelow = -9223372036854777856.0; // -2**63 - epsilon
+        const double equal = -9223372036854775808.0; // 2**63
+        const double closestAbove = -9223372036854774784.0; // -2**63 + epsilon
+
+        elements.push_back(BSON("" << minLL));
+        elements.push_back(BSON("" << equal));
+        elements.push_back(BSON("" << closestAbove));
+        elements.push_back(BSON("" << closestBelow));
     }
 
     return elements;
 }
 
-void testPermutation(const std::vector<BSONObj>& elements,
+void testPermutation(const std::vector<BSONObj>& elementsOrig,
                      const std::vector<BSONObj>& orderings,
                      bool debug) {
 
+    // Since KeyStrings are compared using memcmp we can assume it provides a total ordering such
+    // that there won't be cases where (a < b && b < c && !(a < c)). This test still needs to ensure
+    // that it provides the *correct* total ordering.
     for (size_t k = 0; k < orderings.size(); k++) {
         BSONObj orderObj = orderings[k];
         Ordering ordering = Ordering::make(orderObj);
-        if (debug) log() << orderObj;
+        if (debug) log() << "ordering: " << orderObj;
+
+        std::vector<BSONObj> elements = elementsOrig;
+        std::stable_sort(elements.begin(), elements.end(), BSONObjCmp(orderObj));
+
         for (size_t i = 0; i < elements.size(); i++) {
             const BSONObj& o1 = elements[i];
-            if (debug) log() << "\t" << o1;
-            ROUNDTRIP(o1);
+            if (debug) log() << "\to1: " << o1;
+            ROUNDTRIP_ORDER(o1, ordering);
+
             KeyString k1 = KeyString::make(o1, ordering);
-            ASSERT_EQUALS(o1, k1.toBson(ordering));
 
-            for (size_t j = 0; j < elements.size(); j++) {
-                const BSONObj& o2 = elements[j];
-                if (debug) log() << "\t\t" << o2;
+            KeyString l1 = KeyString::make(BSON("l" << o1.firstElement()), ordering); // kLess
+            KeyString g1 = KeyString::make(BSON("g" << o1.firstElement()), ordering); // kGreater
+            ASSERT_LT(l1, k1);
+            ASSERT_GT(g1, k1);
+
+            if (i + 1 < elements.size()) {
+                const BSONObj& o2 = elements[i + 1];
+                if (debug) log() << "\t\t o2: " << o2;
                 KeyString k2 = KeyString::make(o2, ordering);
+                KeyString g2 = KeyString::make(BSON("g" << o2.firstElement()), ordering);
+                KeyString l2 = KeyString::make(BSON("l" << o2.firstElement()), ordering);
 
-                int c1 = o1.woCompare(o2, ordering);
-                if (c1 < 0) c1 = -1;
-                else if (c1 > 1) c1 = 1;
+                int bsonCmp = o1.woCompare(o2, ordering);
+                invariant(bsonCmp <= 0); // We should be sorted...
 
-                int c2 = k1.compare(k2);
-
-                //log() << "\n" << k1 << "\n" << k2;
-
-                ASSERT_EQUALS(c1, c2);
-
-                if (c2 == 0) {
-                    ASSERT_EQUALS(c2, k2.compare(k1));
+                if (bsonCmp == 0) {
+                    ASSERT_EQ(k1, k2);
                 }
                 else {
-                    ASSERT_EQUALS(-c2, k2.compare(k1));
+                    ASSERT_LT(k1, k2);
+                }
+
+                // Test the query encodings using kLess and kGreater
+                int firstElementComp = o1.firstElement().woCompare(o2.firstElement());
+                if (ordering.descending(1))
+                    firstElementComp = -firstElementComp;
+
+                invariant(firstElementComp <= 0);
+
+                if (firstElementComp == 0) {
+                    // If they share a first element then l1/g1 should equal l2/g2 and l1 should be
+                    // less than both and g1 should be greater than both.
+                    ASSERT_EQ(l1, l2);
+                    ASSERT_EQ(g1, g2);
+                    ASSERT_LT(l1, k2);
+                    ASSERT_GT(g1, k2);
+                }
+                else {
+                    // k1 is less than k2. Less(k2) and Greater(k1) should be between them.
+                    ASSERT_LT(g1, k2);
+                    ASSERT_GT(l2, k1);
                 }
             }
         }
     }
 }
 
-TEST(KeyStringTest, AllPremCompare) {
+TEST(KeyStringTest, AllPermCompare) {
     const std::vector<BSONObj>& elements = getInterestingElements();
 
     for (size_t i = 0; i < elements.size(); i++) {
@@ -483,14 +607,19 @@ TEST(KeyStringTest, AllPremCompare) {
     }
 
     std::vector<BSONObj> orderings;
-    orderings.push_back(BSONObj());
     orderings.push_back(BSON("a" << 1));
     orderings.push_back(BSON("a" << -1));
 
     testPermutation(elements, orderings, false);
 }
 
-TEST(KeyStringTest, AllPrem2Compare) {
+TEST(KeyStringTest, AllPerm2Compare) {
+    // This test can take over a minute without optimizations. Re-enable if you need to debug it.
+#if !defined(MONGO_OPTIMIZED_BUILD)
+    log() << "\t\t\tskipping test on non-optimized build";
+    return;
+#endif
+
     const std::vector<BSONObj>& baseElements = getInterestingElements();
 
     std::vector<BSONObj> elements;
@@ -512,7 +641,6 @@ TEST(KeyStringTest, AllPrem2Compare) {
     }
 
     std::vector<BSONObj> orderings;
-    orderings.push_back(BSONObj());
     orderings.push_back(BSON("a" << 1 << "b" << 1));
     orderings.push_back(BSON("a" << -1 << "b" << 1));
     orderings.push_back(BSON("a" << 1 << "b" << -1));
@@ -555,6 +683,27 @@ int compareNumbers(const BSONElement& lhs, const BSONElement& rhs ) {
     }
 }
 
+TEST(KeyStringTest, NaNs) {
+    // TODO use hex floats to force distinct NaNs
+    const double nan1 = std::numeric_limits<double>::quiet_NaN();
+    const double nan2 = std::numeric_limits<double>::signaling_NaN();
+
+    // Since only output a single NaN, we can't use the normal ROUNDTRIP testing here.
+
+    const KeyString ks1a = KeyString::make(BSON("" << nan1), ONE_ASCENDING);
+    const KeyString ks1d = KeyString::make(BSON("" << nan1), ONE_DESCENDING);
+
+    const KeyString ks2a = KeyString::make(BSON("" << nan2), ONE_ASCENDING);
+    const KeyString ks2d = KeyString::make(BSON("" << nan2), ONE_DESCENDING);
+
+    ASSERT_EQ(ks1a, ks2a);
+    ASSERT_EQ(ks1d, ks2d);
+
+    ASSERT(isNaN(toBson(ks1a, ONE_ASCENDING)[""].Double()));
+    ASSERT(isNaN(toBson(ks2a, ONE_ASCENDING)[""].Double()));
+    ASSERT(isNaN(toBson(ks1d, ONE_DESCENDING)[""].Double()));
+    ASSERT(isNaN(toBson(ks2d, ONE_DESCENDING)[""].Double()));
+}
 TEST(KeyStringTest, NumberOrderLots) {
     std::vector<BSONObj> numbers;
     {
@@ -637,12 +786,13 @@ TEST(KeyStringTest, RecordIds) {
             ASSERT_GTE(ks.getSize(), 2u);
             ASSERT_LTE(ks.getSize(), 10u);
 
-            ASSERT_EQ(KeyString::numBytesForRecordIdStartingAt(ks.getBuffer()), ks.getSize());
-            ASSERT_EQ(KeyString::numBytesForRecordIdEndingAt(ks.getBuffer() + ks.getSize() - 1),
-                      ks.getSize());
+            ASSERT_EQ(KeyString::decodeRecordIdAtEnd(ks.getBuffer(), ks.getSize()), rid);
 
-            ASSERT_EQ(KeyString::decodeRecordIdStartingAt(ks.getBuffer()), rid);
-            ASSERT_EQ(KeyString::decodeRecordIdEndingAt(ks.getBuffer() + ks.getSize() - 1), rid);
+            {
+                BufReader reader(ks.getBuffer(), ks.getSize());
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), rid);
+                ASSERT(reader.atEof());
+            }
 
             if (rid.isNormal()) {
                 ASSERT_GT(ks, KeyString::make(RecordId()));
@@ -661,7 +811,8 @@ TEST(KeyStringTest, RecordIds) {
             if (rid < other) ASSERT_LT(KeyString::make(rid), KeyString::make(other));
             if (rid > other) ASSERT_GT(KeyString::make(rid), KeyString::make(other));
 
-            { // Test concatenating RecordIds like in a unique index
+            {
+                // Test concatenating RecordIds like in a unique index.
                 KeyString ks;
                 ks.appendRecordId(RecordId::max()); // uses all bytes
                 ks.appendRecordId(rid);
@@ -670,58 +821,19 @@ TEST(KeyStringTest, RecordIds) {
                 ks.appendRecordId(RecordId(1)); // uses no extra bytes
                 ks.appendRecordId(rid);
                 ks.appendRecordId(other);
-                ks.appendRecordId(rid);
-                ks.appendRecordId(RecordId(2));
 
-                {
-                    // forward scan
-                    const char* it = ks.getBuffer();
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId::max());
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId(0xDEADBEEF));
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId(1));
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), other);
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId(2));
-                    it += KeyString::numBytesForRecordIdStartingAt(it);
+                ASSERT_EQ(KeyString::decodeRecordIdAtEnd(ks.getBuffer(), ks.getSize()), other);
 
-                    ASSERT_EQ(it, ks.getBuffer() + ks.getSize());
-                }
-
-                {
-                    // reverse scan
-                    const char* it = ks.getBuffer() + ks.getSize();
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId(2));
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), other);
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId(1));
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId(0xDEADBEEF));
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), rid);
-                    it -= KeyString::numBytesForRecordIdEndingAt(it - 1);
-                    ASSERT_EQ(KeyString::decodeRecordIdStartingAt(it), RecordId::max());
-
-                    ASSERT_EQ(it, ks.getBuffer());
-                }
+                // forward scan
+                BufReader reader(ks.getBuffer(), ks.getSize());
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), RecordId::max());
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), rid);
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), RecordId(0xDEADBEEF));
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), rid);
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), RecordId(1));
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), rid);
+                ASSERT_EQ(KeyString::decodeRecordId(&reader), other);
+                ASSERT(reader.atEof());
             }
         }
     }

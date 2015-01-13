@@ -105,6 +105,11 @@ namespace mongo {
           _durable( durable ),
           _sizeStorerSyncTracker( 100000, 60 * 1000 ) {
 
+        if (repair) {
+            // This should be done once before we try to access any data.
+            WiredTigerIndex::disableVersionCheckForRepair();
+        }
+
         _eventHandler.handle_error = mdb_handle_error;
         _eventHandler.handle_message = mdb_handle_message;
         _eventHandler.handle_progress = mdb_handle_progress;
@@ -141,6 +146,7 @@ namespace mongo {
         ss << "create,";
         ss << "cache_size=" << cacheSizeGB << "G,";
         ss << "session_max=20000,";
+        ss << "eviction=(threads_max=4),";
         ss << "statistics=(fast),";
         if ( _durable ) {
             ss << "log=(enabled=true,archive=true,path=journal,compressor=";
@@ -464,7 +470,7 @@ namespace mongo {
 
     std::vector<std::string> WiredTigerKVEngine::getAllIdents( OperationContext* opCtx ) const {
         std::vector<std::string> all;
-        WiredTigerCursor cursor( "metadata:", WiredTigerSession::kMetadataCursorId, opCtx );
+        WiredTigerCursor cursor( "metadata:", WiredTigerSession::kMetadataCursorId, false, opCtx );
         WT_CURSOR* c = cursor.get();
         if ( !c )
             return all;

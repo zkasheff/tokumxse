@@ -77,7 +77,7 @@
 #include "mongo/db/query/find.h"
 #include "mongo/db/query/get_executor.h"
 #include "mongo/db/repl/oplog.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/storage_options.h"
 #include "mongo/platform/atomic_word.h"
@@ -209,7 +209,7 @@ namespace mongo {
                 audit::logQueryAuthzCheck(client, ns, q.query, status.code());
                 uassertStatusOK(status);
             }
-            dbresponse.exhaustNS = runQuery(txn, m, q, op, *resp, fromDBDirectClient);
+            dbresponse.exhaustNS = runQuery(txn, m, q, ns, op, *resp, fromDBDirectClient);
             verify( !resp->empty() );
         }
         catch ( SendStaleConfigException& e ){
@@ -224,10 +224,12 @@ namespace mongo {
         if( ex ){
 
             op.debug().exceptionInfo = ex->getInfo();
-            log() << "assertion " << ex->toString() << " ns:" << q.ns << " query:" <<
+            log(LogComponent::kQuery) <<
+                "assertion " << ex->toString() << " ns:" << q.ns << " query:" <<
                 (q.query.valid() ? q.query.toString() : "query object is corrupt") << endl;
             if( q.ntoskip || q.ntoreturn )
-                log() << " ntoskip:" << q.ntoskip << " ntoreturn:" << q.ntoreturn << endl;
+                log(LogComponent::kQuery) <<
+                    " ntoskip:" << q.ntoskip << " ntoreturn:" << q.ntoreturn << endl;
 
             SendStaleConfigException* scex = NULL;
             if ( ex->getCode() == SendStaleConfigCode ) scex = static_cast<SendStaleConfigException*>( ex.get() );
@@ -242,7 +244,7 @@ namespace mongo {
             BSONObj errObj = err.done();
 
             if( scex ){
-                log() << "stale version detected during query over "
+                log(LogComponent::kQuery) << "stale version detected during query over "
                       << q.ns << " : " << errObj << endl;
             }
 
@@ -747,14 +749,8 @@ namespace mongo {
                 const NamespaceString nsString( ns );
                 uassert( 16258, str::stream() << "Invalid ns [" << ns << "]", nsString.isValid() );
 
-                Status status = Status::OK();
-                if (CursorManager::getGlobalCursorManager()->ownsCursorId(cursorid)) {
-                    // TODO Implement auth check for global cursors.  SERVER-16657.
-                }
-                else {
-                    status = txn->getClient()->getAuthorizationSession()->checkAuthForGetMore(
-                            nsString, cursorid);
-                }
+                Status status = txn->getClient()->getAuthorizationSession()->checkAuthForGetMore(
+                    nsString, cursorid);
                 audit::logGetMoreAuthzCheck(txn->getClient(), nsString, cursorid, status.code());
                 uassertStatusOK(status);
 
@@ -1122,7 +1118,7 @@ namespace mongo {
 
         invariant(LOCK_OK == result);
 
-        log() << "now exiting" << endl;
+        log(LogComponent::kControl) << "now exiting" << endl;
 
         // Execute the graceful shutdown tasks, such as flushing the outstanding journal 
         // and data files, close sockets, etc.
@@ -1150,7 +1146,7 @@ namespace mongo {
 
         audit::logShutdown(currentClient.get());
 
-        log() << "dbexit: " << why << " rc: " << rc;
+        log(LogComponent::kControl) << "dbexit: " << why << " rc: " << rc;
 
 #ifdef _WIN32
         // Windows Service Controller wants to be told when we are down,

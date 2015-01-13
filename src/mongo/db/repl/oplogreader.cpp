@@ -46,7 +46,7 @@
 #include "mongo/db/jsobj.h"
 #include "mongo/db/repl/minvalid.h"
 #include "mongo/db/repl/oplog.h"
-#include "mongo/db/repl/repl_coordinator.h"
+#include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/util/assert_util.h"
 #include "mongo/util/log.h"
 
@@ -173,7 +173,7 @@ namespace repl {
                 if (!worked) {
                     warning() << "Failed to transition into "
                               << MemberState(MemberState::RS_RECOVERING)
-                              << ". Current state: " << replCoord->getCurrentMemberState();
+                              << ". Current state: " << replCoord->getMemberState();
                 }
                 return;
             }

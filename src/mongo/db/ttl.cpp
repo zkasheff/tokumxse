@@ -48,7 +48,7 @@
 #include "mongo/db/dbdirectclient.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/ops/delete.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/server_parameters.h"
 #include "mongo/util/background.h"
 #include "mongo/util/exit.h"
@@ -100,7 +100,7 @@ namespace mongo {
                 // if part of replSet but not in a readable state (e.g. during initial sync), skip.
                 if (repl::getGlobalReplicationCoordinator()->getReplicationMode() ==
                         repl::ReplicationCoordinator::modeReplSet &&
-                        !repl::getGlobalReplicationCoordinator()->getCurrentMemberState().readable())
+                        !repl::getGlobalReplicationCoordinator()->getMemberState().readable())
                     continue;
 
                 set<string> dbs;

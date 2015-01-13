@@ -70,8 +70,8 @@
 #include "mongo/db/query/internal_plans.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/repair_database.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
 #include "mongo/db/repl/repl_settings.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/repl/oplog.h"
 #include "mongo/db/storage/storage_engine.h"
 #include "mongo/db/storage/mmap_v1/dur_stats.h"
@@ -446,7 +446,7 @@ namespace mongo {
         virtual std::vector<BSONObj> stopIndexBuilds(OperationContext* opCtx,
                                                      Database* db,
                                                      const BSONObj& cmdObj) {
-            std::string nsToDrop = db->name() + '.' + cmdObj.firstElement().valuestrsafe();
+            const std::string nsToDrop = parseNsCollectionRequired(db->name(), cmdObj);
 
             IndexCatalog::IndexKillCriteria criteria;
             criteria.ns = nsToDrop;
@@ -454,13 +454,8 @@ namespace mongo {
         }
 
         virtual bool run(OperationContext* txn, const string& dbname , BSONObj& cmdObj, int, string& errmsg, BSONObjBuilder& result, bool fromRepl) {
-            const std::string collToDrop = cmdObj.firstElement().valuestrsafe();
-            if (collToDrop.empty()) {
-                errmsg = "no collection name specified";
-                return false;
-            }
+            const std::string nsToDrop = parseNsCollectionRequired(dbname, cmdObj);
 
-            const std::string nsToDrop = dbname + '.' + collToDrop;
             if (!serverGlobalParams.quiet) {
                 LOG(0) << "CMD: drop " << nsToDrop << endl;
             }
@@ -1009,13 +1004,7 @@ namespace mongo {
         }
 
         bool run(OperationContext* txn, const string& dbname, BSONObj& jsobj, int, string& errmsg, BSONObjBuilder& result, bool fromRepl ) {
-            const std::string collName = jsobj.firstElement().valuestrsafe();
-            if (collName.empty()) {
-                errmsg = "no collection name specified";
-                return false;
-            }
-
-            const std::string ns = dbname + "." + collName;
+            const std::string ns = parseNsCollectionRequired(dbname, jsobj);
 
             ScopedTransaction transaction(txn, MODE_IX);
             AutoGetDb autoDb(txn, dbname, MODE_X);
@@ -1423,7 +1412,7 @@ namespace mongo {
         if (!c->maintenanceOk()
                 && replCoord->getReplicationMode() == repl::ReplicationCoordinator::modeReplSet
                 && !replCoord->canAcceptWritesForDatabase(dbname)
-                && !replCoord->getCurrentMemberState().secondary()) {
+                && !replCoord->getMemberState().secondary()) {
             result.append( "note" , "from execCommand" );
             appendCommandStatus(result, false, "node is recovering");
             return;

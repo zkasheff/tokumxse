@@ -50,7 +50,7 @@
 #include "mongo/db/repl/bgsync.h"
 #include "mongo/db/repl/minvalid.h"
 #include "mongo/db/repl/oplog.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/stats/timer_stats.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/util/exit.h"
@@ -365,7 +365,7 @@ namespace repl {
         Lock::ParallelBatchWriterMode pbwm;
 
         ReplicationCoordinator* replCoord = getGlobalReplicationCoordinator();
-        if (replCoord->getCurrentMemberState().primary() &&
+        if (replCoord->getMemberState().primary() &&
             !replCoord->isWaitingForApplierToDrain()) {
 
             severe() << "attempting to replicate ops while primary";
@@ -486,7 +486,7 @@ namespace {
         }
 
         // Only state RECOVERING can transition to SECONDARY.
-        MemberState state(replCoord->getCurrentMemberState());
+        MemberState state(replCoord->getMemberState());
         if (!state.recovering()) {
             return;
         }
@@ -499,7 +499,7 @@ namespace {
         bool worked = replCoord->setFollowerMode(MemberState::RS_SECONDARY);
         if (!worked) {
             warning() << "Failed to transition into " << MemberState(MemberState::RS_SECONDARY)
-                      << ". Current state: " << replCoord->getCurrentMemberState();
+                      << ". Current state: " << replCoord->getMemberState();
         }
     }
 }
@@ -681,7 +681,7 @@ namespace {
 
         // ignore slaveDelay if the box is still initializing. once
         // it becomes secondary we can worry about it.
-        if( slaveDelaySecs > 0 && replCoord->getCurrentMemberState().secondary() ) {
+        if( slaveDelaySecs > 0 && replCoord->getMemberState().secondary() ) {
             const OpTime ts = lastOp["ts"]._opTime();
             long long a = ts.getSecs();
             long long b = time(0);

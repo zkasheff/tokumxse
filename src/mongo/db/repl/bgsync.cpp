@@ -40,8 +40,8 @@
 #include "mongo/db/dbhelpers.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/repl/oplog.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
-#include "mongo/db/repl/repl_coordinator_impl.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator_impl.h"
 #include "mongo/db/repl/rs_rollback.h"
 #include "mongo/db/repl/rs_sync.h"
 #include "mongo/db/stats/timer_stats.h"
@@ -160,7 +160,7 @@ namespace {
     }
 
     void BackgroundSync::_producerThread() {
-        const MemberState state = _replCoord->getCurrentMemberState();
+        const MemberState state = _replCoord->getMemberState();
         // we want to pause when the state changes to primary
         if (_replCoord->isWaitingForApplierToDrain() || state.primary()) {
             if (!_pause) {
@@ -279,7 +279,7 @@ namespace {
                 // If we are transitioning to primary state, we need to leave
                 // this loop in order to go into bgsync-pause mode.
                 if (_replCoord->isWaitingForApplierToDrain() || 
-                    _replCoord->getCurrentMemberState().primary()) {
+                    _replCoord->getMemberState().primary()) {
                     return;
                 }
 
@@ -321,7 +321,7 @@ namespace {
             // If we are transitioning to primary state, we need to leave
             // this loop in order to go into bgsync-pause mode.
             if (_replCoord->isWaitingForApplierToDrain() ||
-                _replCoord->getCurrentMemberState().primary()) {
+                _replCoord->getMemberState().primary()) {
                 LOG(1) << "waiting for draining or we are primary, not adding more ops to buffer";
                 return;
             }

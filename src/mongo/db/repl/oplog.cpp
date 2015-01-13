@@ -55,7 +55,7 @@
 #include "mongo/db/ops/update_lifecycle_impl.h"
 #include "mongo/db/ops/delete.h"
 #include "mongo/db/repl/bgsync.h"
-#include "mongo/db/repl/repl_coordinator_global.h"
+#include "mongo/db/repl/replication_coordinator_global.h"
 #include "mongo/db/stats/counters.h"
 #include "mongo/db/operation_context_impl.h"
 #include "mongo/db/storage_options.h"
@@ -220,7 +220,7 @@ namespace {
 
         ScopedTransaction transaction(txn, MODE_IX);
         Lock::DBLock lk(txn->lockState(), "local", MODE_IX);
-        Lock::CollectionLock lk2(txn->lockState(), rsoplog, MODE_IX);
+        Lock::OplogIntentWriteLock oplogLk(txn->lockState());
 
         DEV verify( logNS == 0 ); // check this was never a master/slave master
 
@@ -233,7 +233,7 @@ namespace {
         }
 
         ReplicationCoordinator* replCoord = getGlobalReplicationCoordinator();
-        if (ns && ns[0] && !replCoord->canAcceptWritesForDatabase(nsToDatabaseSubstring(ns))) {
+        if (ns[0] && !replCoord->canAcceptWritesForDatabase(nsToDatabaseSubstring(ns))) {
             severe() << "replSet error : logOp() but can't accept write to collection " << ns;
             fassertFailed(17405);
         }
@@ -241,11 +241,12 @@ namespace {
         Client::Context ctx(txn, rsoplog, localDB);
         WriteUnitOfWork wunit(txn);
 
-        std::pair<OpTime,long long> slot = getNextOpTime(txn,
-                                                         localOplogRSCollection,
-                                                         ns,
-                                                         replCoord,
-                                                         opstr);
+        oplogLk.serializeIfNeeded();
+        std::pair<OpTime, long long> slot = getNextOpTime(txn,
+                                                          localOplogRSCollection,
+                                                          ns,
+                                                          replCoord,
+                                                          opstr);
 
         /* we jump through a bunch of hoops here to avoid copying the obj buffer twice --
            instead we do a single copy to the destination position in the memory mapped file.

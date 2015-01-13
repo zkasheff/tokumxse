@@ -91,7 +91,12 @@ namespace {
         // override values in the prefix, but not values in the suffix.
         str::stream ss;
         ss << "type=file,";
-        ss << "memory_page_max=100m,";
+        // Setting this larger than 10m can hurt latencies and throughput degradation if this
+        // is the oplog.  See SERVER-16247
+        ss << "memory_page_max=10m,";
+        // Choose a higher split percent, since most usage is append only. Allow some space
+        // for workloads where updates increase the size of documents.
+        ss << "split_pct=90,";
         ss << "leaf_value_max=1MB,";
         if (wiredTigerGlobalOptions.useCollectionPrefixCompression) {
             ss << "prefix_compression,";
@@ -297,7 +302,7 @@ namespace {
 
     RecordData WiredTigerRecordStore::dataFor(OperationContext* txn, const RecordId& loc) const {
         // ownership passes to the shared_array created below
-        WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        WiredTigerCursor curwrap( _uri, _instanceId, true, txn);
         WT_CURSOR *c = curwrap.get();
         invariant( c );
         c->set_key(c, _makeKey(loc));
@@ -311,7 +316,7 @@ namespace {
 
     bool WiredTigerRecordStore::findRecord( OperationContext* txn,
                                             const RecordId& loc, RecordData* out ) const {
-        WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        WiredTigerCursor curwrap( _uri, _instanceId, true, txn);
         WT_CURSOR *c = curwrap.get();
         invariant( c );
         c->set_key(c, _makeKey(loc));
@@ -324,7 +329,7 @@ namespace {
     }
 
     void WiredTigerRecordStore::deleteRecord( OperationContext* txn, const RecordId& loc ) {
-        WiredTigerCursor cursor( _uri, _instanceId, txn );
+        WiredTigerCursor cursor( _uri, _instanceId, true, txn );
         cursor.assertInActiveTxn();
         WT_CURSOR *c = cursor.get();
         c->set_key(c, _makeKey(loc));
@@ -348,7 +353,7 @@ namespace {
         if (!_isCapped)
             return false;
 
-        if (_dataSize.load() > _cappedMaxSize)
+        if (_dataSize.load() >= _cappedMaxSize)
             return true;
 
         if ((_cappedMaxDocs != -1) && (_numRecords.load() > _cappedMaxDocs))
@@ -392,7 +397,7 @@ namespace {
             docsOverCap = numRecords - _cappedMaxDocs;
 
         try {
-            WiredTigerCursor curwrap( _uri, _instanceId, txn);
+            WiredTigerCursor curwrap( _uri, _instanceId, true, txn);
             WT_CURSOR *c = curwrap.get();
             RecordId oldest;
             int ret = 0;
@@ -488,7 +493,7 @@ namespace {
             loc = _nextId();
         }
 
-        WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        WiredTigerCursor curwrap( _uri, _instanceId, true, txn);
         curwrap.assertInActiveTxn();
         WT_CURSOR *c = curwrap.get();
         invariant( c );
@@ -544,7 +549,7 @@ namespace {
                                                               int len,
                                                               bool enforceQuota,
                                                               UpdateMoveNotifier* notifier ) {
-        WiredTigerCursor curwrap( _uri, _instanceId, txn);
+        WiredTigerCursor curwrap( _uri, _instanceId, true, txn);
         curwrap.assertInActiveTxn();
         WT_CURSOR *c = curwrap.get();
         invariant( c );
@@ -561,7 +566,7 @@ namespace {
         c->set_key(c, _makeKey(loc));
         WiredTigerItem value(data, len);
         c->set_value(c, value.Get());
-        ret = c->update(c);
+        ret = c->insert(c);
         invariantWTOK(ret);
 
         _increaseDataSize(txn, len - old_length);
@@ -842,7 +847,7 @@ namespace {
             _oplogSetStartHack( wru );
         }
 
-        WiredTigerCursor cursor(_uri, _instanceId, txn);
+        WiredTigerCursor cursor(_uri, _instanceId, true, txn);
         WT_CURSOR* c = cursor.get();
 
         int cmp;
@@ -942,7 +947,7 @@ namespace {
           _txn( txn ),
           _forward( dir == CollectionScanParams::FORWARD ),
           _forParallelCollectionScan( forParallelCollectionScan ),
-          _cursor( new WiredTigerCursor( rs.getURI(), rs.instanceId(), txn ) ),
+          _cursor( new WiredTigerCursor( rs.getURI(), rs.instanceId(), true, txn ) ),
           _eof(false),
           _readUntilForOplog(WiredTigerRecoveryUnit::get(txn)->getOplogReadTill()) {
         RS_ITERATOR_TRACE("start");
@@ -1111,12 +1116,15 @@ namespace {
             // parallel collection scan or something
             needRestore = true;
             _savedRecoveryUnit = txn->recoveryUnit();
-            _cursor.reset( new WiredTigerCursor( _rs.getURI(), _rs.instanceId(), txn ) );
+            _cursor.reset( new WiredTigerCursor( _rs.getURI(), _rs.instanceId(), true, txn ) );
             _forParallelCollectionScan = false; // we only do this the first time
         }
 
         invariant( _savedRecoveryUnit == txn->recoveryUnit() );
         if ( needRestore || !wt_keeptxnopen() ) {
+            // This will ensure an active session exists, so any restored cursors will bind to it
+            invariant(WiredTigerRecoveryUnit::get(txn)->getSession() == _cursor->getSession());
+
             RecordId saved = _lastLoc;
             _locate(_lastLoc, false);
             RS_ITERATOR_TRACE( "isEOF check " << _eof );
