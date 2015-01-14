@@ -93,7 +93,7 @@ namespace mongo {
                                       originalVersionField(DISK_VERSION_CURRENT) <<
                                       historyField(ab.arr()));
 
-            s = _metadataDict->insert(opCtx, versionInfoKey, Slice(versionObj.objdata(), versionObj.objsize()));
+            s = _metadataDict->insert(opCtx, versionInfoKey, Slice::of(versionObj));
             if (!s.isOK()) {
                 return s;
             }
@@ -215,7 +215,7 @@ namespace mongo {
                           originalVersionField(originalVersion) <<
                           historyField(ab.arr()));
 
-        s = _metadataDict->insert(opCtx, versionInfoKey, Slice(versionObj.objdata(), versionObj.objsize()));
+        s = _metadataDict->insert(opCtx, versionInfoKey, Slice::of(versionObj));
         if (!s.isOK()) {
             return s;
         }
