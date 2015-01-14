@@ -89,8 +89,8 @@ namespace mongo {
                 return KVDictionary::Encoding::cmp(ftslice2slice(a), ftslice2slice(b));
             }
 
-            BSONObj extractKey(const ftcxx::Slice &s) const {
-                return KVDictionary::Encoding::extractKey(ftslice2slice(s));
+            BSONObj extractKey(const ftcxx::Slice &key, const ftcxx::Slice &val) const {
+                return KVDictionary::Encoding::extractKey(ftslice2slice(key), ftslice2slice(val));
             }
 
             RecordId extractRecordId(const ftcxx::Slice &s) const {

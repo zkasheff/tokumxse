@@ -103,7 +103,8 @@ namespace mongo {
         virtual bool appendCustomStats(OperationContext* txn, BSONObjBuilder* output, double scale) const;
 
         // Will be used for diagnostic printing by the TokuFT KVDictionary implementation.
-        static BSONObj extractKey(const Slice &s, const Ordering &ordering);
+        static BSONObj extractKey(const Slice &key, const Ordering &ordering, const KeyString::TypeBits &typeBits);
+        static BSONObj extractKey(const Slice &key, const Slice &val, const Ordering &ordering);
         static RecordId extractRecordId(const Slice &s);
 
     private:

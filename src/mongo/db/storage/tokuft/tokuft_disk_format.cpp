@@ -170,8 +170,15 @@ namespace mongo {
             }
 
             case DISK_VERSION_4: {
-                // We can't upgrade to version 3 from any previous version, since it changes the
+                // We can't upgrade to version 4 from any previous version, since it changes the
                 // index key and RecordId format.
+                invariant(false);
+                break;
+            }
+
+            case DISK_VERSION_5: {
+                // We can't upgrade to version 5 from any previous version, since it updates the
+                // index key format with type bits.
                 invariant(false);
                 break;
             }

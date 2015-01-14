@@ -487,7 +487,9 @@ namespace mongo {
             return RecordId();
         }
 
-        return KeyString::decodeRecordIdStartingAt(_cursor->currKey().data());
+        const Slice &key = _cursor->currKey();
+        BufReader br(key.data(), key.size());
+        return KeyString::decodeRecordId(&br);
     }
 
     void KVRecordStore::KVRecordIterator::_saveLocAndVal() {

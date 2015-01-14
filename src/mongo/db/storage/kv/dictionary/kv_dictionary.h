@@ -118,7 +118,7 @@ namespace mongo {
 
             bool isIndex() const { return _isIndex; }
 
-            BSONObj extractKey(const Slice &key) const;
+            BSONObj extractKey(const Slice &key, const Slice &val) const;
 
             RecordId extractRecordId(const Slice &key) const;
         };

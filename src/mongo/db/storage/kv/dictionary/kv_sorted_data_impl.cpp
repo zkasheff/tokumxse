@@ -110,12 +110,17 @@ namespace mongo {
       return new KVSortedDataBuilderImpl(this, txn, dupsAllowed);
     }
 
-    BSONObj KVSortedDataImpl::extractKey(const Slice &s, const Ordering &ordering) {
-        return KeyString::toBson(s.data(), s.size(), ordering);
+    BSONObj KVSortedDataImpl::extractKey(const Slice &key, const Slice &val, const Ordering &ordering) {
+        BufReader br(val.data(), val.size());
+        return extractKey(key, ordering, KeyString::TypeBits::fromBuffer(&br));
+    }
+
+    BSONObj KVSortedDataImpl::extractKey(const Slice &key, const Ordering &ordering, const KeyString::TypeBits &typeBits) {
+        return KeyString::toBson(key.data(), key.size(), ordering, typeBits);
     }
 
     RecordId KVSortedDataImpl::extractRecordId(const Slice &s) {
-        return KeyString::decodeRecordIdEndingAt(s.data() + s.size() - 1);
+        return KeyString::decodeRecordIdAtEnd(s.data(), s.size());
     }
 
     Status KVSortedDataImpl::insert(OperationContext* txn,
@@ -147,7 +152,13 @@ namespace mongo {
                 }
             }
 
-            s = _db->insert(txn, Slice::of(KeyString::make(key, _ordering, loc)), Slice());
+            KeyString keyString = KeyString::make(key, _ordering, loc);
+            Slice val;
+            if (!keyString.getTypeBits().isAllZeros()) {
+                // Gotta love that strong C type system, protecting us from all the important errors...
+                val = Slice(reinterpret_cast<const char *>(keyString.getTypeBits().getBuffer()), keyString.getTypeBits().getSize());
+            }
+            s = _db->insert(txn, Slice::of(keyString), val);
         } catch (WriteConflictException) {
             if (!dupsAllowed) {
                 // If we see a WriteConflictException on a unique index, according to
@@ -237,8 +248,14 @@ namespace mongo {
         const Ordering &_ordering;
 
         mutable boost::scoped_ptr<KVDictionary::Cursor> _cursor;
-        BSONObj _savedKey;
-        RecordId _savedLoc;
+
+        mutable KeyString _keyString;
+        mutable bool _isKeyCurrent;
+        mutable BSONObj _keyBson;
+        mutable bool _isTypeBitsValid;
+        mutable KeyString::TypeBits _typeBits;
+        mutable RecordId _savedLoc;
+
         mutable bool _initialized;
 
         void _initialize() const {
@@ -252,9 +269,52 @@ namespace mongo {
             _cursor.reset(_db->getCursor(_txn, _dir));
         }
 
+        void invalidateCache() {
+            _isKeyCurrent = false;
+            _isTypeBitsValid = false;
+            _keyBson = BSONObj();
+            _savedLoc = RecordId();
+        }
+
+        void dassertKeyCacheIsValid() const {
+            DEV {
+                invariant(_isKeyCurrent);
+                Slice key = _cursor->currKey();
+                invariant(key.size() == _keyString.getSize());
+                invariant(memcmp(key.data(), _keyString.getBuffer(), key.size()) == 0);
+            }
+        }
+
+        void loadKeyIfNeeded() const {
+            if (_isKeyCurrent) {
+                dassertKeyCacheIsValid();
+                return;
+            }
+            Slice key = _cursor->currKey();
+            _keyString.resetFromBuffer(key.data(), key.size());
+            _isKeyCurrent = true;
+        }
+
+        const KeyString::TypeBits& getTypeBits() const {
+            if (!_isTypeBitsValid) {
+                const Slice &val = _cursor->currVal();
+                BufReader br(val.data(), val.size());
+                _typeBits.resetFromBuffer(&br);
+                _isTypeBitsValid = true;
+            }
+            return _typeBits;
+        }
+
+        bool _locate(const KeyString &ks) {
+            invalidateCache();
+            _cursor.reset(_db->getCursor(_txn, Slice::of(ks), _dir));
+            return !isEOF() &&
+                    ks.getSize() == _cursor->currKey().size() &&
+                    memcmp(ks.getBuffer(), _cursor->currKey().data(), ks.getSize()) == 0;
+        }
+
         bool _locate(const BSONObj &key, const RecordId &loc) {
-            _cursor.reset(_db->getCursor(_txn, Slice::of(KeyString::make(key, _ordering, loc)), _dir));
-            return !isEOF() && loc == getRecordId() && key == getKey();
+            return _locate(KeyString::make(key, _ordering, loc));
         }
 
     public:
@@ -264,7 +324,11 @@ namespace mongo {
               _txn(txn),
               _ordering(ordering),
               _cursor(),
-              _savedKey(),
+              _keyString(),
+              _isKeyCurrent(false),
+              _keyBson(),
+              _isTypeBitsValid(false),
+              _typeBits(),
               _savedLoc(),
               _initialized(false)
         {}
@@ -280,14 +344,60 @@ namespace mongo {
             return !_cursor || !_cursor->ok();
         }
 
-        bool pointsToSamePlaceAs(const Cursor& other) const {
-            return getRecordId() == other.getRecordId() && getKey() == other.getKey();
+        bool pointsToSamePlaceAs(const Cursor& genOther) const {
+            const KVSortedDataInterfaceCursor& other =
+                    dynamic_cast<const KVSortedDataInterfaceCursor&>(genOther);
+            if (isEOF() && other.isEOF()) {
+                return true;
+            } else if (isEOF() || other.isEOF()) {
+                return false;
+            }
+
+            // We'd like to avoid loading the key into either cursor if we can avoid it, hence the
+            // combinatorial massacre below.
+            if (_isKeyCurrent && other._isKeyCurrent) {
+                if (getRecordId() != other.getRecordId()) {
+                    return false;
+                }
+
+                return _keyString.getSize() == other._keyString.getSize() &&
+                        memcmp(_keyString.getBuffer(), other._keyString.getBuffer(), _keyString.getSize()) == 0;
+            } else if (_isKeyCurrent) {
+                const Slice &otherKey = other._cursor->currKey();
+                if (getRecordId() != KVSortedDataImpl::extractRecordId(otherKey)) {
+                    return false;
+                }
+
+                return _keyString.getSize() == otherKey.size() &&
+                        memcmp(_keyString.getBuffer(), otherKey.data(), _keyString.getSize()) == 0;
+            } else if (other._isKeyCurrent) {
+                const Slice &key = _cursor->currKey();
+                if (KVSortedDataImpl::extractRecordId(key) != other.getRecordId()) {
+                    return false;
+                }
+
+                return key.size() == other._keyString.getSize() &&
+                        memcmp(key.data(), other._keyString.getBuffer(), key.size()) == 0;
+            } else {
+                const Slice &key = _cursor->currKey();
+                const Slice &otherKey = other._cursor->currKey();
+                if (KVSortedDataImpl::extractRecordId(key) != KVSortedDataImpl::extractRecordId(otherKey)) {
+                    return false;
+                }
+
+                return key.size() == otherKey.size() &&
+                        memcmp(key.data(), otherKey.data(), key.size()) == 0;
+            }
         }
 
         void aboutToDeleteBucket(const RecordId& bucket) { }
 
-        bool locate(const BSONObj& key, const RecordId& loc) {
-            return _locate(stripFieldNames(key), loc);
+        bool locate(const BSONObj& key, const RecordId& origId) {
+            RecordId id = origId;
+            if (id.isNull()) {
+                id = _dir > 0 ? RecordId::min() : RecordId::max();
+            }
+            return _locate(stripFieldNames(key), id);
         }
 
         void advanceTo(const BSONObj &keyBegin,
@@ -321,7 +431,12 @@ namespace mongo {
             if (isEOF()) {
                 return BSONObj();
             }
-            return KVSortedDataImpl::extractKey(_cursor->currKey(), _ordering);
+            if (_isKeyCurrent && !_keyBson.isEmpty()) {
+                return _keyBson;
+            }
+            loadKeyIfNeeded();
+            _keyBson = KVSortedDataImpl::extractKey(_cursor->currKey(), _ordering, getTypeBits());
+            return _keyBson;
         }
 
         RecordId getRecordId() const {
@@ -329,19 +444,27 @@ namespace mongo {
             if (isEOF()) {
                 return RecordId();
             }
-            return KVSortedDataImpl::extractRecordId(_cursor->currKey());
+            if (_savedLoc.isNull()) {
+                loadKeyIfNeeded();
+                _savedLoc = KVSortedDataImpl::extractRecordId(Slice::of(_keyString));
+                dassert(!_savedLoc.isNull());
+            }
+            return _savedLoc;
         }
 
         void advance() {
             _initialize();
             if (!isEOF()) {
+                invalidateCache();
                 _cursor->advance(_txn);
             }
         }
 
         void savePosition() {
             _initialize();
-            _savedKey = getKey().getOwned();
+            if (!isEOF()) {
+                loadKeyIfNeeded();
+            }
             _savedLoc = getRecordId();
             _cursor.reset();
             _txn = NULL;
@@ -351,10 +474,9 @@ namespace mongo {
             invariant(!_txn && !_cursor);
             _txn = txn;
             _initialized = true;
-            if (!_savedKey.isEmpty() && !_savedLoc.isNull()) {
-                _locate(_savedKey, _savedLoc);
+            if (!_savedLoc.isNull()) {
+                _locate(_keyString);
             } else {
-                invariant(_savedKey.isEmpty() && _savedLoc.isNull());
                 invariant(isEOF()); // this is the whole point!
             }
         }

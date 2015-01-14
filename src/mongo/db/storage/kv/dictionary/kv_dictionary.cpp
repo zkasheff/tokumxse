@@ -107,14 +107,15 @@ namespace mongo {
         }
     }
 
-    BSONObj KVDictionary::Encoding::extractKey(const Slice &key) const {
+    BSONObj KVDictionary::Encoding::extractKey(const Slice &key, const Slice &val) const {
         dassert(isIndex());
-        return KVSortedDataImpl::extractKey(key, _ordering);
+        return KVSortedDataImpl::extractKey(key, val, _ordering);
     }
 
     RecordId KVDictionary::Encoding::extractRecordId(const Slice &key) const {
         if (isRecordStore()) {
-            return KeyString::decodeRecordIdStartingAt(key.data());
+            BufReader br(key.data(), key.size());
+            return KeyString::decodeRecordId(&br);
         } else {
             dassert(isIndex());
             return KVSortedDataImpl::extractRecordId(key);

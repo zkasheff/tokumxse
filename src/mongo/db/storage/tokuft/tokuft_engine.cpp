@@ -101,7 +101,13 @@ namespace mongo {
                 b.doneFast();
             } else if (enc.isIndex()) {
                 BSONObjBuilder b(bounds.subobjStart());
-                b.append("key", enc.extractKey(keySlice));
+                // TODO: Can't access val inside this callback.  This is going to break things,
+                // unfortunately, when we try to decode a key without the type bits.  For now, we
+                // can't decode the key without the type bits.  Best we can do is encode the hex.
+                //b.append("key", enc.extractKey(keySlice, ftcxx::Slice()));
+                KeyString ks;
+                ks.resetFromBuffer(keySlice.data(), keySlice.size());
+                b.append("key", ks.toString());
                 appendRecordId(enc.extractRecordId(keySlice), b);
                 b.doneFast();
             } else {
