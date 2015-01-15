@@ -1,3 +1,7 @@
+if (TestData.storageEngine == "tokuft") {
+    print("Skipping due to MSE-39");
+} else {
+
 var baseDir = "jstests_directoryperdb";
 port = allocatePorts( 1 )[ 0 ];
 dbpath = MongoRunner.dataPath + baseDir + "/";
@@ -26,3 +30,5 @@ assert.isnull(MongoRunner.runMongod({
     dbpath: dbpath,
     port: port,
     restart: true}));
+
+}
