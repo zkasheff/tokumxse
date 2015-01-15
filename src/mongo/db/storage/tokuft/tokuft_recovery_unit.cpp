@@ -176,7 +176,7 @@ namespace mongo {
             repl::ReplicationCoordinator *coord = repl::getGlobalReplicationCoordinator();
             _isReplicaSetSecondary = (coord != NULL &&
                                       coord->getReplicationMode() == repl::ReplicationCoordinator::modeReplSet &&
-                                      coord->getCurrentMemberState().secondary());
+                                      coord->getMemberState().secondary());
             _knowsAboutReplicationState = true;
         }
         return _isReplicaSetSecondary;
