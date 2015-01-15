@@ -84,7 +84,6 @@ namespace mongo {
         while (_syncRunning) {
             {
                 boost::mutex::scoped_lock lk(_syncMutex);
-                LOG(2) << "KVSizeStorer::syncThread: waiting" << std::endl;
                 _syncCond.timed_wait(lk, boost::posix_time::milliseconds(1000));
             }
 
