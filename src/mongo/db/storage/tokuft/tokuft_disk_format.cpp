@@ -66,10 +66,10 @@ namespace mongo {
     const BSONField<int> TokuFTDiskFormatVersion::upgradedToField("upgradedTo");
     const BSONField<Date_t> TokuFTDiskFormatVersion::upgradedAtField("upgradedAt");
     const BSONField<BSONObj> TokuFTDiskFormatVersion::upgradedByField("upgradedBy");
-    const BSONField<string> TokuFTDiskFormatVersion::mongodbVersionField("mongodbVersion");
-    const BSONField<string> TokuFTDiskFormatVersion::mongodbGitField("mongodbGitVersion");
-    const BSONField<string> TokuFTDiskFormatVersion::tokuftGitField("tokuftGitVersion");
-    const BSONField<string> TokuFTDiskFormatVersion::sysInfoField("sysInfo");
+    const BSONField<std::string> TokuFTDiskFormatVersion::mongodbVersionField("mongodbVersion");
+    const BSONField<std::string> TokuFTDiskFormatVersion::mongodbGitField("mongodbGitVersion");
+    const BSONField<std::string> TokuFTDiskFormatVersion::tokuftGitField("tokuftGitVersion");
+    const BSONField<std::string> TokuFTDiskFormatVersion::sysInfoField("sysInfo");
 
     TokuFTDiskFormatVersion::TokuFTDiskFormatVersion(KVDictionary *metadataDict)
         : _startupVersion(DISK_VERSION_INVALID),
@@ -133,7 +133,7 @@ namespace mongo {
         Status s = Status::OK();
         if (_currentVersion < DISK_VERSION_CURRENT) {
             log() << "Need to upgrade from disk format version " << static_cast<int>(_currentVersion)
-                  << " to " << static_cast<int>(DISK_VERSION_CURRENT) << "." << endl;
+                  << " to " << static_cast<int>(DISK_VERSION_CURRENT) << ".";
         }
         while (_currentVersion < DISK_VERSION_CURRENT && s.isOK()) {
             s = upgradeToVersion(opCtx, static_cast<VersionID>(static_cast<int>(_currentVersion) + 1));

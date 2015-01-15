@@ -39,8 +39,8 @@ namespace mongo {
     class KVRecordStoreHarnessHelper : public HarnessHelper {
     public:
         virtual RecordStore* newNonCappedRecordStore() {
-            auto_ptr<OperationContext> opCtx(newOperationContext());
-            auto_ptr<KVDictionary> db(new KVHeapDictionary());
+            std::auto_ptr<OperationContext> opCtx(newOperationContext());
+            std::auto_ptr<KVDictionary> db(new KVHeapDictionary());
             const StringData ns("kvRecordStoreTestHarnessNamespace");
             return new KVRecordStore(db.release(), opCtx.get(), ns, ns, CollectionOptions(), NULL);
         }

@@ -37,9 +37,9 @@ namespace mongo {
     class KVSortedDataImplHarness : public HarnessHelper {
     public:
         virtual SortedDataInterface* newSortedDataInterface(bool unqiue) {
-            auto_ptr<OperationContext> opCtx(newOperationContext());
+            std::auto_ptr<OperationContext> opCtx(newOperationContext());
             IndexEntryComparison iec(Ordering::make(BSONObj()));
-            auto_ptr<KVDictionary> db(new KVHeapDictionary(KVDictionary::Encoding::forIndex(Ordering::make(BSONObj()))));
+            std::auto_ptr<KVDictionary> db(new KVHeapDictionary(KVDictionary::Encoding::forIndex(Ordering::make(BSONObj()))));
             return new KVSortedDataImpl(db.release(), opCtx.get(), NULL);
         }
 

@@ -47,9 +47,9 @@ namespace mongo {
         virtual ~TokuFTDictionaryHarnessHelper() { }
 
 	virtual KVDictionary* newKVDictionary() {
-            auto_ptr<OperationContext> opCtx(new OperationContextNoop(newRecoveryUnit()));
+            std::auto_ptr<OperationContext> opCtx(new OperationContextNoop(newRecoveryUnit()));
 
-            const string ident = mongoutils::str::stream() << "TokuFTDictionary-" << _seq++;
+            const std::string ident = mongoutils::str::stream() << "TokuFTDictionary-" << _seq++;
             Status status = _engine->createKVDictionary(opCtx.get(), ident, KVDictionary::Encoding(), BSONObj());
             invariant(status.isOK());
 
@@ -61,7 +61,7 @@ namespace mongo {
 	}
 
     private:
-        auto_ptr<KVHarnessHelper> _kvHarness;
+        std::auto_ptr<KVHarnessHelper> _kvHarness;
         TokuFTEngine *_engine;
         int _seq;
     };

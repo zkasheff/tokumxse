@@ -55,7 +55,7 @@ namespace mongo {
         if (it != _map.end()) {
             return it->second;
         }
-        auto_ptr<KVDictionary> ptr(new KVHeapDictionary(enc));
+        std::auto_ptr<KVDictionary> ptr(new KVHeapDictionary(enc));
         _map[ident] = ptr.get();
         return ptr.release();
     }

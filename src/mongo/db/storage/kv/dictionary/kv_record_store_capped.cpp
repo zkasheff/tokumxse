@@ -213,7 +213,7 @@ namespace mongo {
             // snapshot.
             _idTracker->setRecoveryUnitRestriction(ru);
 
-            auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
+            std::auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
 
             KVRecordIterator *kvIter = dynamic_cast<KVRecordIterator *>(iter.get());
             invariant(kvIter);

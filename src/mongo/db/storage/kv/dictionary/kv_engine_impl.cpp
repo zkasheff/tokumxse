@@ -49,7 +49,7 @@ namespace mongo {
         if (_sizeStorer) {
             return _sizeStorer.get();
         }
-        auto_ptr<KVSizeStorer> sizeStorer(new KVSizeStorer(getMetadataDictionary(), newRecoveryUnit()));
+        std::auto_ptr<KVSizeStorer> sizeStorer(new KVSizeStorer(getMetadataDictionary(), newRecoveryUnit()));
         sizeStorer->loadFromDict(opCtx);
         _sizeStorer.reset(sizeStorer.release());
         return _sizeStorer.get();
@@ -77,9 +77,9 @@ namespace mongo {
                                                const StringData& ns,
                                                const StringData& ident,
                                                const CollectionOptions& options ) {
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
+        std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
                                                   options.storageEngine));
-        auto_ptr<KVRecordStore> rs;
+        std::auto_ptr<KVRecordStore> rs;
         KVSizeStorer *sizeStorer = (persistDictionaryStats()
                                     ? getSizeStorer(opCtx)
                                     : NULL);
@@ -115,7 +115,7 @@ namespace mongo {
                                                               const IndexDescriptor* desc) {
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
-        auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
+        std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forIndex(Ordering::make(keyPattern)),
                                                   options));
         return new KVSortedDataImpl(db.release(), opCtx, desc);
     }

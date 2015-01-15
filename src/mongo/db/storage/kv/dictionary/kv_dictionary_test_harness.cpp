@@ -104,7 +104,7 @@ namespace mongo {
                 Status status = db->get( opCtx.get(), hi, value );
                 ASSERT( status.isOK() );
                 ASSERT( value.size() == 6 );
-                ASSERT( string( "there" ) == string( value.data() ) );
+                ASSERT( std::string( "there" ) == std::string( value.data() ) );
             }
 
             {
@@ -112,7 +112,7 @@ namespace mongo {
                 Status status = db->get( opCtx.get(), apple, value );
                 ASSERT( status.isOK() );
                 ASSERT( value.size() == 6 );
-                ASSERT( string( "bears" ) == string( value.data() ) );
+                ASSERT( std::string( "bears" ) == std::string( value.data() ) );
             }
         }
 
@@ -139,7 +139,7 @@ namespace mongo {
                 Status status = db->get( opCtx.get(), apple, value );
                 ASSERT( status.isOK() );
                 ASSERT( value.size() == 6 );
-                ASSERT( string( "bears" ) == string( value.data() ) );
+                ASSERT( std::string( "bears" ) == std::string( value.data() ) );
             }
 
             {

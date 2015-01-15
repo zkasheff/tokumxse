@@ -51,9 +51,9 @@ namespace mongo {
         virtual ~TokuFTRecordStoreHarnessHelper() { }
 
         virtual RecordStore* newNonCappedRecordStore() {
-            auto_ptr<OperationContext> opCtx(new OperationContextNoop(newRecoveryUnit()));
+            std::auto_ptr<OperationContext> opCtx(new OperationContextNoop(newRecoveryUnit()));
 
-            const string ident = mongoutils::str::stream() << "TokuFTRecordStore-" << _seq++;
+            const std::string ident = mongoutils::str::stream() << "TokuFTRecordStore-" << _seq++;
             Status status = _engine->createRecordStore(opCtx.get(), "ns", ident, CollectionOptions());
             invariant(status.isOK());
 
@@ -65,7 +65,7 @@ namespace mongo {
 	}
 
     private:
-        auto_ptr<KVHarnessHelper> _kvHarness;
+        std::auto_ptr<KVHarnessHelper> _kvHarness;
         KVEngine *_engine;
         int _seq;
     };

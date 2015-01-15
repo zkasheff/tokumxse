@@ -82,7 +82,7 @@ namespace mongo {
         /**
          * Creates an error code message out of a key
          */
-        string dupKeyError(const BSONObj& key) {
+        std::string dupKeyError(const BSONObj& key) {
             StringBuilder sb;
             sb << "E11000 duplicate key error ";
             // TODO figure out how to include index name without dangerous casts
@@ -403,8 +403,8 @@ namespace mongo {
         void advanceTo(const BSONObj &keyBegin,
                        int keyBeginLen,
                        bool afterKey,
-                       const vector<const BSONElement*>& keyEnd,
-                       const vector<bool>& keyEndInclusive) {
+                       const std::vector<const BSONElement*>& keyEnd,
+                       const std::vector<bool>& keyEndInclusive) {
             // make a key representing the location to which we want to advance.
             BSONObj key = IndexEntryComparison::makeQueryObject(
                                                                 keyBegin,
@@ -419,8 +419,8 @@ namespace mongo {
         void customLocate(const BSONObj& keyBegin,
                           int keyBeginLen,
                           bool afterVersion,
-                          const vector<const BSONElement*>& keyEnd,
-                          const vector<bool>& keyEndInclusive) {
+                          const std::vector<const BSONElement*>& keyEnd,
+                          const std::vector<bool>& keyEndInclusive) {
             // The rocks engine has this to say:
             // XXX I think these do the same thing????
             advanceTo( keyBegin, keyBeginLen, afterVersion, keyEnd, keyEndInclusive );
