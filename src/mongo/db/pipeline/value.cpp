@@ -26,10 +26,7 @@
  * it in the license file.
  */
 
-#define MONGO_PCH_WHITELISTED
 #include "mongo/platform/basic.h"
-#include "mongo/pch.h"
-#undef MONGO_PCH_WHITELISTED
 
 #include "mongo/db/pipeline/value.h"
 
@@ -44,6 +41,12 @@
 namespace mongo {
     using namespace mongoutils;
     using boost::intrusive_ptr;
+    using std::min;
+    using std::numeric_limits;
+    using std::ostream;
+    using std::string;
+    using std::stringstream;
+    using std::vector;
 
     void ValueStorage::verifyRefCountingIfShould() const {
         switch (type) {
@@ -620,7 +623,7 @@ namespace mongo {
             const vector<Value>& lArr = rL.getArray();
             const vector<Value>& rArr = rR.getArray();
 
-            const size_t elems = min(lArr.size(), rArr.size());
+            const size_t elems = std::min(lArr.size(), rArr.size());
             for (size_t i = 0; i < elems; i++ ) {
                 // compare the two corresponding elements
                 ret = Value::compare(lArr[i], rArr[i]);

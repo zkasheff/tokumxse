@@ -97,6 +97,14 @@ namespace mongo {
 
     using boost::scoped_ptr;
     using logger::LogComponent;
+    using std::auto_ptr;
+    using std::endl;
+    using std::hex;
+    using std::ios;
+    using std::ofstream;
+    using std::string;
+    using std::stringstream;
+    using std::vector;
 
     // for diaglog
     inline void opread(Message& m) {
@@ -525,7 +533,7 @@ namespace mongo {
 
         int found = CursorManager::eraseCursorGlobalIfAuthorized(txn, n, cursorArray);
 
-        if ( logger::globalLogDomain()->shouldLog(logger::LogSeverity::Debug(1)) || found != n ) {
+        if ( shouldLog(logger::LogSeverity::Debug(1)) || found != n ) {
             LOG( found == n ? 1 : 0 ) << "killcursors: found " << found << " of " << n << endl;
         }
 

@@ -50,6 +50,7 @@
 #include "mongo/db/server_options.h"
 #include "mongo/util/background.h"
 #include "mongo/util/concurrency/value.h"
+#include "mongo/util/debug_util.h"
 #include "mongo/util/fail_point_service.h"
 #include "mongo/util/hex.h"
 #include "mongo/util/mongoutils/str.h"
@@ -61,6 +62,12 @@
 
 namespace mongo {
 
+    using std::endl;
+    using std::pair;
+    using std::string;
+    using std::stringstream;
+    using std::vector;
+
     MONGO_FP_DECLARE(throwSockExcep);
 
     static bool ipv6 = false;
@@ -71,7 +78,7 @@ namespace mongo {
         struct timeval tv;
         tv.tv_sec = (int)secs;
         tv.tv_usec = (int)((long long)(secs*1000*1000) % (1000*1000));
-        bool report = logger::globalLogDomain()->shouldLog(logger::LogSeverity::Debug(4));
+        bool report = shouldLog(logger::LogSeverity::Debug(4));
         DEV report = true;
 #if defined(_WIN32)
         tv.tv_sec *= 1000; // Windows timeout is a DWORD, in milliseconds.

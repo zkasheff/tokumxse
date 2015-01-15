@@ -70,6 +70,10 @@
 #include "mongo/util/startup_test.h"
 
 namespace mongo {
+
+    using std::endl;
+    using std::stringstream;
+
 namespace repl {
 
 namespace {
@@ -82,12 +86,6 @@ namespace {
     // appears in the oplog.
     mongo::mutex newOpMutex("oplogNewOp");
     boost::condition newOptimeNotifier;
-
-    void setNewOptime(const OpTime& newTime) {
-        mutex::scoped_lock lk(newOpMutex);
-        setGlobalOptime(newTime);
-        newOptimeNotifier.notify_all();
-    }
 
     // so we can fail the same way
     void checkOplogInsert( StatusWith<RecordId> result ) {
@@ -789,6 +787,12 @@ namespace {
                                               boost::posix_time::seconds(1)))
                 return;
         }
+    }
+
+    void setNewOptime(const OpTime& newTime) {
+        mutex::scoped_lock lk(newOpMutex);
+        setGlobalOptime(newTime);
+        newOptimeNotifier.notify_all();
     }
 
     void initOpTimeFromOplog(OperationContext* txn, const std::string& oplogNS) {

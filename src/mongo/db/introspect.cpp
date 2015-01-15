@@ -30,10 +30,7 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kDefault
 
-#define MONGO_PCH_WHITELISTED
 #include "mongo/platform/basic.h"
-#include "mongo/pch.h"
-#undef MONGO_PCH_WHITELISTED
 
 #include <boost/scoped_ptr.hpp>
 
@@ -52,6 +49,8 @@
 namespace mongo {
 
     using boost::scoped_ptr;
+    using std::endl;
+    using std::string;
 
 namespace {
     void _appendUserInfo(const CurOp& c,

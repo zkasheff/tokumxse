@@ -35,8 +35,6 @@
 #include "mongo/db/storage/record_store.h"
 #include "mongo/unittest/unittest.h"
 
-using std::string;
-
 namespace mongo {
 namespace {
 
@@ -65,7 +63,7 @@ namespace {
     private:
         OperationContext *_txn;
         RecordId _loc;
-        string _data;
+        std::string _data;
 
         int nCalls; // to verify that recordStoreGoingToMove() gets called once
     };
