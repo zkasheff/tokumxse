@@ -122,7 +122,7 @@ namespace mongo {
             bool _ok;
         };
 
-        virtual Status get(OperationContext *opCtx, const Slice &key, Slice &value) const;
+        virtual Status get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking) const;
 
         virtual Status dupKeyCheck(OperationContext *opCtx, const Slice &lookupLeft, const Slice &lookupRight, const RecordId &id);
         virtual bool supportsDupKeyCheck() const {

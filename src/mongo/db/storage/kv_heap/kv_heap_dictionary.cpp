@@ -128,7 +128,7 @@ namespace mongo {
           _map(_cmp)
     {}
 
-    Status KVHeapDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value) const {
+    Status KVHeapDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking) const {
         SliceMap::const_iterator it = _map.find(key);
         if (it != _map.end()) {
             value = it->second;

@@ -94,15 +94,15 @@ namespace mongo {
                     : 0;
         }
 
-        int _getReadFlags(OperationContext *opCtx) {
-            return (_getDBTxn(opCtx).is_read_only() || _isReplicaSetSecondary(opCtx))
+        int _getReadFlags(OperationContext *opCtx, bool skipPessimisticLocking) {
+            return (skipPessimisticLocking || _getDBTxn(opCtx).is_read_only() || _isReplicaSetSecondary(opCtx))
                     ? DB_PRELOCKED | DB_PRELOCKED_WRITE
                     : 0;
         }
 
     }
 
-    Status TokuFTDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value) const {
+    Status TokuFTDictionary::get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking) const {
         class Callback {
             Slice &_v;
         public:
@@ -114,7 +114,7 @@ namespace mongo {
         } cb(value);
 
         const ftcxx::DBTxn &txn = _getDBTxn(opCtx);
-        int r = _db.getf_set(txn, slice2ftslice(key), _getReadFlags(opCtx), cb);
+        int r = _db.getf_set(txn, slice2ftslice(key), _getReadFlags(opCtx, skipPessimisticLocking), cb);
         return statusFromTokuFTError(r);
     }
 

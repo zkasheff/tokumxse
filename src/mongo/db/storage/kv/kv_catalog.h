@@ -98,7 +98,8 @@ namespace mongo {
 
         BSONObj _findEntry( OperationContext* opCtx,
                             const StringData& ns,
-                            RecordId* out=NULL ) const;
+                            RecordId* out=NULL,
+                            bool skipPessimisticLocking=false ) const;
 
         /**
          * Generates a new unique identifier for a new "thing".

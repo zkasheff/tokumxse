@@ -177,9 +177,9 @@ namespace mongo {
         }
     }
 
-    RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& id) {
+    RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& id, bool skipPessimisticLocking) {
         Slice value;
-        Status status = db->get(txn, Slice::of(KeyString::make(id)), value);
+        Status status = db->get(txn, Slice::of(KeyString::make(id)), value, skipPessimisticLocking);
         if (!status.isOK()) {
             if (status.code() == ErrorCodes::NoSuchKey) {
                 return RecordData(nullptr, 0);
@@ -202,8 +202,8 @@ namespace mongo {
     }
 
     bool KVRecordStore::findRecord( OperationContext* txn,
-                                    const RecordId& loc, RecordData* out ) const {
-        RecordData rd = _getDataFor(_db.get(), txn, loc);
+                                    const RecordId& loc, RecordData* out, bool skipPessimisticLocking ) const {
+        RecordData rd = _getDataFor(_db.get(), txn, loc, skipPessimisticLocking);
         if (rd.data() == NULL) {
             return false;
         }
@@ -214,7 +214,7 @@ namespace mongo {
     void KVRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
         const KeyString key = KeyString::make(id);
         Slice val;
-        Status s = _db->get(txn, Slice::of(key), val);
+        Status s = _db->get(txn, Slice::of(key), val, false);
         invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << id << " for delete: " << s.toString());
 
         _updateStats(txn, -1, -val.size());
@@ -230,7 +230,7 @@ namespace mongo {
         DEV {
             // Should never overwrite an existing record.
             Slice v;
-            const Status status = _db->get(txn, Slice::of(key), v);
+            const Status status = _db->get(txn, Slice::of(key), v, true);
             invariant(status.code() == ErrorCodes::NoSuchKey);
         }
 
@@ -280,7 +280,7 @@ namespace mongo {
         int64_t dataSizeDelta = value.size();
 
         Slice val;
-        Status status = _db->get(txn, Slice::of(key), val);
+        Status status = _db->get(txn, Slice::of(key), val, false);
         if (status.code() == ErrorCodes::NoSuchKey) {
             numRecordsDelta += 1;
         } else if (status.isOK()) {

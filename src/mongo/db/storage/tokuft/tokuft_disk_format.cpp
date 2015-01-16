@@ -226,7 +226,7 @@ namespace mongo {
 
     Status TokuFTDiskFormatVersion::getInfo(OperationContext *opCtx, BSONObj &b) const {
         Slice val;
-        Status s = _metadataDict->get(opCtx, versionInfoKey, val);
+        Status s = _metadataDict->get(opCtx, versionInfoKey, val, false);
         if (!s.isOK()) {
             return s;
         }
