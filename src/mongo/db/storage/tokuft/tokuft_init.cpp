@@ -72,12 +72,12 @@ namespace mongo {
             if (params.directoryperdb) {
                 severe() << "TokuFT: directoryPerDB not yet supported.  This option is incompatible with TokuFT.";
                 severe() << "TokuFT: The following server crash is intentional.";
-                fassertFailed(28610);
+                fassertFailedNoTrace(28610);
             }
             if (tokuftGlobalOptions.engineOptions.directoryForIndexes) {
                 severe() << "TokuFT: directoryForIndexes not yet supported.  This option is incompatible with TokuFT.";
                 severe() << "TokuFT: The following server crash is intentional.";
-                fassertFailed(28611);
+                fassertFailedNoTrace(28611);
             }
 
             KVStorageEngineOptions options;
