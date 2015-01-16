@@ -99,7 +99,7 @@ namespace mongo {
     public:
         KVHeapDictionary(const KVDictionary::Encoding &cmp = KVDictionary::Encoding());
 
-        Status get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking) const;
+        Status get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking=false) const;
 
         Status insert(OperationContext *opCtx, const Slice &key, const Slice &value, bool skipPessimisticLocking);
 

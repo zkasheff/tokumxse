@@ -133,7 +133,7 @@ namespace mongo {
          *   Status::OK() success, value contains and owned slice.
          *   Status::code() == ErrorCodes::NoSuchKey when no key was found, value is not populated.
          */
-        virtual Status get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking) const = 0;
+        virtual Status get(OperationContext *opCtx, const Slice &key, Slice &value, bool skipPessimisticLocking=false) const = 0;
 
         /**
          * Insert `key' into the dictionary and associate it with `value',
