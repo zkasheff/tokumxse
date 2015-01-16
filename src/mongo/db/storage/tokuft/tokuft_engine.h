@@ -73,9 +73,7 @@ namespace mongo {
             return Status::OK();
         }
 
-        // TODO: Take a checkpoint? Do we have to? What's the contract?
-        //       Maybe doing nothing is sufficient.
-        virtual int flushAllFiles( bool sync ) { return 0; }
+        virtual int flushAllFiles( bool sync );
 
         virtual bool isDurable() const { return true; }
 

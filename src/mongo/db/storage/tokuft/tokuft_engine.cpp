@@ -39,6 +39,7 @@
 #include "mongo/db/storage/tokuft/tokuft_dictionary.h"
 #include "mongo/db/storage/tokuft/tokuft_disk_format.h"
 #include "mongo/db/storage/tokuft/tokuft_engine.h"
+#include "mongo/db/storage/tokuft/tokuft_errors.h"
 #include "mongo/db/storage/tokuft/tokuft_global_options.h"
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/log.h"
@@ -374,6 +375,13 @@ namespace mongo {
         }
         invariant(r == 0);
         return Status::OK();
+    }
+
+    int TokuFTEngine::flushAllFiles(bool sync) {
+        LOG(1) << "TokuFT: running checkpoint on-demand";
+        Status s = statusFromTokuFTError(_env.env()->txn_checkpoint(_env.env(), 0, 0, 0));
+        uassertStatusOK(s);
+        return 1;
     }
 
     bool TokuFTEngine::hasIdent(OperationContext* opCtx, const StringData& ident) const {
