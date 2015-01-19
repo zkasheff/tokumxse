@@ -184,6 +184,10 @@ namespace mongo {
 
         void undoUpdateStats(long long nrDelta, long long dsDelta);
 
+        virtual void updateStatsAfterRepair(OperationContext* txn,
+                                            long long numRecords,
+                                            long long dataSize);
+
         class KVRecordIterator : public RecordIterator {
             KVDictionary *_db;
             const CollectionScanParams::Direction _dir;

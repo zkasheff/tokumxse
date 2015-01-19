@@ -177,6 +177,15 @@ namespace mongo {
         }
     }
 
+    void KVRecordStore::updateStatsAfterRepair(OperationContext* txn, long long numRecords, long long dataSize) {
+        if (_sizeStorer) {
+            _numRecords.store(numRecords);
+            _dataSize.store(dataSize);
+            _sizeStorer->store(this, _ident, numRecords, dataSize);
+            _sizeStorer->storeIntoDict(txn);
+        }
+    }
+
     RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& id, bool skipPessimisticLocking) {
         Slice value;
         Status status = db->get(txn, Slice::of(KeyString(id)), value, skipPessimisticLocking);
