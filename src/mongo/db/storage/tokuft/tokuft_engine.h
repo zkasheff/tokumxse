@@ -82,6 +82,8 @@ namespace mongo {
          */
         virtual bool supportsDocLocking() const { return true; }
 
+        virtual bool supportsDirectoryPerDB() const { return false; }
+
         // ------------------------------------------------------------------ //
 
         bool persistDictionaryStats() const { return true; }
