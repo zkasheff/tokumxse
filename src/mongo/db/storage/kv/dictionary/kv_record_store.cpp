@@ -179,7 +179,7 @@ namespace mongo {
 
     RecordData KVRecordStore::_getDataFor(const KVDictionary *db, OperationContext* txn, const RecordId& id, bool skipPessimisticLocking) {
         Slice value;
-        Status status = db->get(txn, Slice::of(KeyString::make(id)), value, skipPessimisticLocking);
+        Status status = db->get(txn, Slice::of(KeyString(id)), value, skipPessimisticLocking);
         if (!status.isOK()) {
             if (status.code() == ErrorCodes::NoSuchKey) {
                 return RecordData(nullptr, 0);
@@ -212,7 +212,7 @@ namespace mongo {
     }
 
     void KVRecordStore::deleteRecord(OperationContext* txn, const RecordId& id) {
-        const KeyString key = KeyString::make(id);
+        const KeyString key(id);
         Slice val;
         Status s = _db->get(txn, Slice::of(key), val, false);
         invariantKVOK(s, str::stream() << "KVRecordStore: couldn't find record " << id << " for delete: " << s.toString());
@@ -226,7 +226,7 @@ namespace mongo {
     Status KVRecordStore::_insertRecord(OperationContext *txn,
                                         const RecordId &id,
                                         const Slice &value) {
-        const KeyString key = KeyString::make(id);
+        const KeyString key(id);
         DEV {
             // Should never overwrite an existing record.
             Slice v;
@@ -273,7 +273,7 @@ namespace mongo {
                                                      int len,
                                                      bool enforceQuota,
                                                      UpdateMoveNotifier* notifier) {
-        const KeyString key = KeyString::make(id);
+        const KeyString key(id);
         const Slice value(data, len);
 
         int64_t numRecordsDelta = 0;
@@ -305,7 +305,7 @@ namespace mongo {
                                              const RecordData& oldRec,
                                              const char* damageSource,
                                              const mutablebson::DamageVector& damages ) {
-        const KeyString key = KeyString::make(id);
+        const KeyString key(id);
 
         const Slice oldValue(oldRec.data(), oldRec.size());
         const KVUpdateWithDamagesMessage message(damageSource, damages);
@@ -454,7 +454,7 @@ namespace mongo {
 
         // A new iterator with no start position will be either min() or max()
         invariant(id.isNormal() || id == RecordId::min() || id == RecordId::max());
-        _cursor.reset(_db->getCursor(_txn, Slice::of(KeyString::make(id)), _dir));
+        _cursor.reset(_db->getCursor(_txn, Slice::of(KeyString(id)), _dir));
     }
 
     KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,

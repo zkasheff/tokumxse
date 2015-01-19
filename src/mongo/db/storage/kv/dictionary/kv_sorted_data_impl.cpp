@@ -139,8 +139,8 @@ namespace mongo {
             if (!dupsAllowed) {
                 s = (_db->supportsDupKeyCheck()
                      ? _db->dupKeyCheck(txn,
-                                        Slice::of(KeyString::make(key, _ordering, RecordId::min())),
-                                        Slice::of(KeyString::make(key, _ordering, RecordId::max())),
+                                        Slice::of(KeyString(key, _ordering, RecordId::min())),
+                                        Slice::of(KeyString(key, _ordering, RecordId::max())),
                                         loc)
                      : dupKeyCheck(txn, key, loc));
                 if (s == ErrorCodes::DuplicateKey) {
@@ -152,7 +152,7 @@ namespace mongo {
                 }
             }
 
-            KeyString keyString = KeyString::make(key, _ordering, loc);
+            KeyString keyString(key, _ordering, loc);
             Slice val;
             if (!keyString.getTypeBits().isAllZeros()) {
                 // Gotta love that strong C type system, protecting us from all the important errors...
@@ -178,7 +178,7 @@ namespace mongo {
                                    bool dupsAllowed) {
         invariant(loc.isNormal());
         dassert(!hasFieldNames(key));
-        _db->remove(txn, Slice::of(KeyString::make(key, _ordering, loc)));
+        _db->remove(txn, Slice::of(KeyString(key, _ordering, loc)));
     }
 
     Status KVSortedDataImpl::dupKeyCheck(OperationContext* txn,
@@ -314,7 +314,7 @@ namespace mongo {
         }
 
         bool _locate(const BSONObj &key, const RecordId &loc) {
-            return _locate(KeyString::make(key, _ordering, loc));
+            return _locate(KeyString(key, _ordering, loc));
         }
 
     public:
