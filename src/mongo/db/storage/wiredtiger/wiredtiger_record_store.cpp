@@ -39,6 +39,7 @@
 #include <boost/shared_array.hpp>
 #include <wiredtiger.h>
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
@@ -383,7 +384,7 @@ namespace {
 
         // we do this is a sub transaction in case it aborts
         WiredTigerRecoveryUnit* realRecoveryUnit =
-            dynamic_cast<WiredTigerRecoveryUnit*>( txn->releaseRecoveryUnit() );
+            checked_cast<WiredTigerRecoveryUnit*>( txn->releaseRecoveryUnit() );
         invariant( realRecoveryUnit );
         WiredTigerSessionCache* sc = realRecoveryUnit->getSessionCache();
         txn->setRecoveryUnit( new WiredTigerRecoveryUnit( sc ) );
@@ -403,6 +404,7 @@ namespace {
             RecordId oldest;
             int ret = 0;
             while (( sizeSaved < sizeOverCap || docsRemoved < docsOverCap ) &&
+                   docsRemoved < 250 &&
                    (ret = c->next(c)) == 0 ) {
                 int64_t key;
                 ret = c->get_key(c, &key);
@@ -769,14 +771,6 @@ namespace {
 
     }
 
-    Status WiredTigerRecordStore::touch( OperationContext* txn, BSONObjBuilder* output ) const {
-        if (output) {
-            output->append("numRanges", 1);
-            output->append("millis", 0);
-        }
-        return Status::OK();
-    }
-
     Status WiredTigerRecordStore::setCustomOption( OperationContext* txn,
                                                    const BSONElement& option,
                                                    BSONObjBuilder* info ) {
@@ -864,6 +858,14 @@ namespace {
         return _fromKey(key);
     }
 
+    void WiredTigerRecordStore::updateStatsAfterRepair(OperationContext* txn,
+                                                       long long numRecords,
+                                                       long long dataSize) {
+        _numRecords.store(numRecords);
+        _dataSize.store(dataSize);
+        _sizeStorer->store(_uri, numRecords, dataSize);
+    }
+
     RecordId WiredTigerRecordStore::_nextId() {
         invariant(!_useOplogHack);
         RecordId out = RecordId(_nextIdNum.fetchAndAdd(1));
@@ -872,7 +874,7 @@ namespace {
     }
 
     WiredTigerRecoveryUnit* WiredTigerRecordStore::_getRecoveryUnit( OperationContext* txn ) {
-        return dynamic_cast<WiredTigerRecoveryUnit*>( txn->recoveryUnit() );
+        return checked_cast<WiredTigerRecoveryUnit*>( txn->recoveryUnit() );
     }
 
     class WiredTigerRecordStore::NumRecordsChange : public RecoveryUnit::Change {

@@ -142,6 +142,7 @@ namespace mongo {
         virtual Status truncate( OperationContext* txn );
 
         virtual bool compactSupported() const { return true; }
+        virtual bool compactsInPlace() const { return true; }
 
         virtual Status compact( OperationContext* txn,
                                 RecordStoreCompactAdaptor* adaptor,
@@ -159,8 +160,6 @@ namespace mongo {
                                         BSONObjBuilder* result,
                                         double scale ) const;
 
-        virtual Status touch( OperationContext* txn, BSONObjBuilder* output ) const;
-
         virtual Status setCustomOption( OperationContext* txn,
                                         const BSONElement& option,
                                         BSONObjBuilder* info = NULL );
@@ -174,6 +173,10 @@ namespace mongo {
 
         virtual Status oplogDiskLocRegister( OperationContext* txn,
                                              const OpTime& opTime );
+
+        virtual void updateStatsAfterRepair(OperationContext* txn,
+                                            long long numRecords,
+                                            long long dataSize);
 
         bool isOplog() const { return _isOplog; }
         bool usingOplogHack() const { return _useOplogHack; }

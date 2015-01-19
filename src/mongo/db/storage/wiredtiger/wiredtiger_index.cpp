@@ -36,6 +36,7 @@
 
 #include <set>
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/db/json.h"
 #include "mongo/db/catalog/index_catalog_entry.h"
 #include "mongo/db/index/index_descriptor.h"
@@ -66,8 +67,6 @@ namespace {
     static const int TempKeyMaxSize = 1024; // this goes away with SERVER-3372
 
     static const WiredTigerItem emptyItem(NULL, 0);
-
-    bool shouldCheckIndexVersions = true;
 
     static const int kMinimumIndexVersion = 6;
     static const int kCurrentIndexVersion = 6; // New indexes use this by default.
@@ -113,11 +112,6 @@ namespace {
     }
 
 } // namespace
-
-    // static
-    void WiredTigerIndex::disableVersionCheckForRepair() {
-        shouldCheckIndexVersions = false;
-    }
 
     // static
     StatusWith<std::string> WiredTigerIndex::parseIndexOptions(const BSONObj& options) {
@@ -209,17 +203,14 @@ namespace {
           _uri( uri ),
           _instanceId( WiredTigerSession::genCursorId() ) {
 
-        if (shouldCheckIndexVersions) {
-            Status versionStatus =
-                WiredTigerUtil::checkApplicationMetadataFormatVersion(ctx,
-                                                                      uri,
-                                                                      kMinimumIndexVersion,
-                                                                      kMaximumIndexVersion);
-            if (!versionStatus.isOK()) {
-                fassertFailedWithStatusNoTrace(28579, versionStatus);
-            }
+        Status versionStatus =
+            WiredTigerUtil::checkApplicationMetadataFormatVersion(ctx,
+                                                                  uri,
+                                                                  kMinimumIndexVersion,
+                                                                  kMaximumIndexVersion);
+        if (!versionStatus.isOK()) {
+            fassertFailedWithStatusNoTrace(28579, versionStatus);
         }
-
     }
 
     Status WiredTigerIndex::insert(OperationContext* txn,
@@ -355,7 +346,7 @@ namespace {
     bool WiredTigerIndex::isDup(WT_CURSOR *c, const BSONObj& key, const RecordId& loc ) {
         invariant( unique() );
         // First check whether the key exists.
-        KeyString data = KeyString::make( key, _ordering );
+        KeyString data( key, _ordering );
         WiredTigerItem item( data.getBuffer(), data.getSize() );
         c->set_key( c, item.Get() );
         int ret = c->search(c);
@@ -445,7 +436,7 @@ namespace {
                     return s;
             }
 
-            KeyString data = KeyString::make( key, _idx->_ordering, loc );
+            KeyString data( key, _idx->_ordering, loc );
 
             // Can't use WiredTigerCursor since we aren't using the cache.
             WiredTigerItem item(data.getBuffer(), data.getSize());
@@ -586,7 +577,7 @@ namespace {
 
         virtual bool pointsToSamePlaceAs(const SortedDataInterface::Cursor& genOther) const {
             const WiredTigerIndexCursorBase& other =
-                dynamic_cast<const WiredTigerIndexCursorBase&>(genOther);
+                checked_cast<const WiredTigerIndexCursorBase&>(genOther);
 
             if ( _eof && other._eof )
                 return true;
@@ -1003,10 +994,10 @@ namespace {
                                            const RecordId& loc,
                                            bool dupsAllowed ) {
 
-        const KeyString data = KeyString::make( key, _ordering );
+        const KeyString data( key, _ordering );
         WiredTigerItem keyItem( data.getBuffer(), data.getSize() );
 
-        KeyString value = KeyString::make(loc);
+        KeyString value(loc);
         if (!data.getTypeBits().isAllZeros())
             value.appendTypeBits(data.getTypeBits());
 
@@ -1073,7 +1064,7 @@ namespace {
                                           const BSONObj& key,
                                           const RecordId& loc,
                                           bool dupsAllowed ) {
-        KeyString data = KeyString::make( key, _ordering );
+        KeyString data( key, _ordering );
         WiredTigerItem keyItem( data.getBuffer(), data.getSize() );
         c->set_key( c, keyItem.Get() );
 
@@ -1171,7 +1162,7 @@ namespace {
 
         TRACE_INDEX << " key: " << keyBson << " loc: " << loc;
 
-        KeyString key = KeyString::make( keyBson, _ordering, loc );
+        KeyString key( keyBson, _ordering, loc );
         WiredTigerItem keyItem( key.getBuffer(), key.getSize() );
 
         WiredTigerItem valueItem = 
@@ -1196,7 +1187,7 @@ namespace {
                                             const RecordId& loc,
                                             bool dupsAllowed ) {
         invariant( dupsAllowed );
-        KeyString data = KeyString::make( key, _ordering, loc );
+        KeyString data( key, _ordering, loc );
         WiredTigerItem item( data.getBuffer(), data.getSize() );
         c->set_key(c, item.Get() );
         int ret = c->remove(c);
