@@ -21,7 +21,7 @@
      // Make sure that at least 1 chunk is on another shard so that mongos doesn't treat this as a
      // single-shard query (which doesn't exercise the bug).
      st.startBalancer();
-     st.awaitBalance('skip', 'test');
+     st.awaitBalance('skip', 'test', 60000 * 5);
 
      var docCount = mongosCol.count();
      var shardCol = st.shard0.getDB('test').getCollection('skip');
