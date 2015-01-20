@@ -156,6 +156,10 @@ namespace mongo {
 
         virtual Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info );
 
+        virtual bool compactSupported() const { return true; }
+
+        virtual bool compactsInPlace() const { return true; }
+
         virtual Status compact(OperationContext *opCtx);
 
         const ftcxx::DB &db() const { return _db; }

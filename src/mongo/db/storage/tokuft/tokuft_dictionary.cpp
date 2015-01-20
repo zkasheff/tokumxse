@@ -235,7 +235,32 @@ namespace mongo {
     }
 
     Status TokuFTDictionary::compact(OperationContext *opCtx) {
-        return Status::OK();
+        Status s = statusFromTokuFTError(_db.get()->optimize(_db.get()));
+        if (!s.isOK()) {
+            return s;
+        }
+
+        class OptimizeCallback {
+            int call(float progress) {
+                return 0;
+            }
+
+        public:
+            static int callback(void *extra, float progress) {
+                OptimizeCallback *e = static_cast<OptimizeCallback *>(extra);
+                return e->call(progress);
+            }
+        } cb;
+
+        uint64_t loops;
+        LOG(1) << "TokuFT: running compact";
+        const int r = _db.db()->hot_optimize(_db.db(), NULL, NULL, &OptimizeCallback::callback, &cb, &loops);
+        if (r == -1 || r == 0) {
+            LOG(1) << "TokuFT: ran " << loops << " iterations of optimization to compact";
+            return Status::OK();
+        } else {
+            return statusFromTokuFTError(r);
+        }
     }
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction)

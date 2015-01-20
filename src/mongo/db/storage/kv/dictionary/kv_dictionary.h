@@ -251,12 +251,19 @@ namespace mongo {
          */
         virtual Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info) = 0;
 
+        virtual bool compactSupported() const { return false; }
+
+        virtual bool compactsInPlace() const { invariant(false); }
+
         /**
          * Run compaction if the unerlying data structure supports it.
          *
          * Return: Status::OK(), success
          */
-        virtual Status compact(OperationContext *opCtx) = 0;
+        virtual Status compact(OperationContext *opCtx) {
+            invariant(false);
+            return Status::OK();
+        }
 
         /**
          * Sorted cursor interface over a KVDictionary.
