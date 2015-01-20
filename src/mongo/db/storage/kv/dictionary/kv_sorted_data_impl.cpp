@@ -213,13 +213,6 @@ namespace mongo {
         return !cursor->ok();
     }
 
-    Status KVSortedDataImpl::touch(OperationContext* txn) const {
-        // fullValidate iterates over every key, which brings things into memory
-        long long numKeys;
-        fullValidate(txn, true, &numKeys, NULL);
-        return Status::OK();
-    }
-
     long long KVSortedDataImpl::numEntries(OperationContext* txn) const {
         long long numKeys = 0;
         fullValidate(txn, true, &numKeys, NULL);

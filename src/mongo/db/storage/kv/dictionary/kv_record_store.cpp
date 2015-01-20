@@ -426,20 +426,6 @@ namespace mongo {
         _db->appendCustomStats(txn, result, scale);
     }
 
-    Status KVRecordStore::touch( OperationContext* txn, BSONObjBuilder* output ) const {
-        Timer t;
-        for (boost::scoped_ptr<RecordIterator> iter( getIterator( txn ) );
-             !iter->isEOF(); iter->getNext()) {
-            // no-op, data is brought into memory just by iterating over it
-        }
-
-        if (output) {
-            output->append("numRanges", 1);
-            output->append("millis", t.millis());
-        }
-        return Status::OK();
-    }
-
     Status KVRecordStore::setCustomOption( OperationContext* txn,
                                            const BSONElement& option,
                                            BSONObjBuilder* info ) {
