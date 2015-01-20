@@ -31,6 +31,7 @@
 
 #include <boost/scoped_ptr.hpp>
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -207,16 +208,14 @@ namespace mongo {
                                                      const RecordId& start,
                                                      const CollectionScanParams::Direction& dir) const {
         if (_engineSupportsDocLocking && dir == CollectionScanParams::FORWARD) {
-            KVRecoveryUnit *ru = dynamic_cast<KVRecoveryUnit *>(txn->recoveryUnit());
-            invariant(ru);
+            KVRecoveryUnit *ru = checked_cast<KVRecoveryUnit *>(txn->recoveryUnit());
             // Must set this before we call KVRecordStore::getIterator because that will create a
             // snapshot.
             _idTracker->setRecoveryUnitRestriction(ru);
 
             std::auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
 
-            KVRecordIterator *kvIter = dynamic_cast<KVRecordIterator *>(iter.get());
-            invariant(kvIter);
+            KVRecordIterator *kvIter = checked_cast<KVRecordIterator *>(iter.get());
             _idTracker->setIteratorRestriction(ru, kvIter);
 
             return iter.release();

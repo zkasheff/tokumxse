@@ -33,6 +33,7 @@
 
 #include <boost/scoped_ptr.hpp>
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/index/index_descriptor.h"
 #include "mongo/db/storage/index_entry_comparison.h"
@@ -346,7 +347,7 @@ namespace mongo {
 
         bool pointsToSamePlaceAs(const Cursor& genOther) const {
             const KVSortedDataInterfaceCursor& other =
-                    dynamic_cast<const KVSortedDataInterfaceCursor&>(genOther);
+                    checked_cast<const KVSortedDataInterfaceCursor&>(genOther);
             if (isEOF() && other.isEOF()) {
                 return true;
             } else if (isEOF() || other.isEOF()) {

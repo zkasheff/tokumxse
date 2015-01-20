@@ -32,6 +32,7 @@
 
 #include <algorithm>
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/base/error_codes.h"
 #include "mongo/base/status.h"
 #include "mongo/db/catalog/collection_options.h"
@@ -75,8 +76,7 @@ namespace mongo {
     namespace {
 
         TokuFTRecoveryUnit *_getTokuRU(OperationContext *opCtx) {
-            TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
-            invariant(ru != NULL);
+            TokuFTRecoveryUnit *ru = checked_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
             return ru;
         }
 

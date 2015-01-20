@@ -32,6 +32,7 @@
 
 #include <boost/scoped_ptr.hpp>
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/key_string.h"
@@ -303,8 +304,7 @@ namespace mongo {
     namespace {
 
         const ftcxx::DBTxn &_getDBTxn(OperationContext *opCtx) {
-            TokuFTRecoveryUnit *ru = dynamic_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
-            invariant(ru != NULL);
+            TokuFTRecoveryUnit *ru = checked_cast<TokuFTRecoveryUnit *>(opCtx->recoveryUnit());
             return ru->txn(opCtx);
         }
 

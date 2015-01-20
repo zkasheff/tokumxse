@@ -28,6 +28,7 @@
  *    it in the license file.
  */
 
+#include "mongo/base/checked_cast.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/kv_heap/kv_heap_dictionary.h"
 #include "mongo/db/storage/kv_heap/kv_heap_recovery_unit.h"
@@ -61,7 +62,7 @@ namespace mongo {
     }
 
     KVHeapRecoveryUnit* KVHeapRecoveryUnit::getKVHeapRecoveryUnit(OperationContext* opCtx) {
-        return dynamic_cast<KVHeapRecoveryUnit*>(opCtx->recoveryUnit());
+        return checked_cast<KVHeapRecoveryUnit*>(opCtx->recoveryUnit());
     }
 
     void InsertOperation::rollback() {
