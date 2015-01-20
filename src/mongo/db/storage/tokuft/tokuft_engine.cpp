@@ -52,8 +52,6 @@
 
 namespace mongo {
     
-    // TODO: Real error handling
-
     static const int env_mode = 0755;
     static const int env_flags = DB_INIT_LOCK | DB_INIT_MPOOL | DB_INIT_TXN | DB_CREATE |
         DB_PRIVATE | DB_INIT_LOG | DB_RECOVER;
