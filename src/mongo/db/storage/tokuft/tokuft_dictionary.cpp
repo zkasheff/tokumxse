@@ -235,7 +235,7 @@ namespace mongo {
     }
 
     Status TokuFTDictionary::compact(OperationContext *opCtx) {
-        Status s = statusFromTokuFTError(_db.get()->optimize(_db.get()));
+        Status s = statusFromTokuFTError(_db.db()->optimize(_db.db()));
         if (!s.isOK()) {
             return s;
         }
