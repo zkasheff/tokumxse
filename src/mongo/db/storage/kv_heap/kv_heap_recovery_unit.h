@@ -32,7 +32,7 @@
 #include <string.h>
 #include <vector>
 
-#include "mongo/db/storage/recovery_unit.h"
+#include "mongo/db/storage/kv/dictionary/kv_recovery_unit.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/util/assert_util.h"
 #include "third_party/boost/boost/shared_ptr.hpp"
@@ -102,7 +102,7 @@ namespace mongo {
         virtual void rollback();
     };
 
-    class KVHeapRecoveryUnit : public RecoveryUnit {
+    class KVHeapRecoveryUnit : public KVRecoveryUnit {
         MONGO_DISALLOW_COPYING(KVHeapRecoveryUnit);
 
         std::vector<boost::shared_ptr<Change> > _ops;
@@ -133,6 +133,15 @@ namespace mongo {
         virtual void registerChange(Change* change);
 
         virtual void setRollbackWritesDisabled() {}
+
+        virtual KVRecoveryUnit *newRecoveryUnit() const {
+            return new KVHeapRecoveryUnit();
+        }
+
+        virtual bool hasSnapshot() const {
+            // not a doc-level locking engine
+            invariant(false);
+        }
 
         static KVHeapRecoveryUnit* getKVHeapRecoveryUnit(OperationContext* opCtx);
     };

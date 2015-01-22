@@ -71,6 +71,10 @@ namespace mongo {
             _rollbackWritesDisabled = true;
         }
 
+        KVRecoveryUnit* newRecoveryUnit() const {
+            return new TokuFTRecoveryUnit(_env);
+        }
+
         bool hasSnapshot() const;
 
     private:

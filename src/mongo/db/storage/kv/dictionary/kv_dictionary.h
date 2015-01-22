@@ -187,6 +187,14 @@ namespace mongo {
         }
 
         /**
+         * Called after a capped collection deletes a contiguous range of
+         * keys at the beginning of the dictionary.  Gives the
+         * implementation a chance to do something to optimize the
+         * dictionary.
+         */
+        virtual void justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right) {}
+
+        /**
          * Name of the dictionary.
          */
         virtual const char *name() const = 0;

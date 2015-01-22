@@ -63,6 +63,13 @@ namespace mongo {
         const RecordId &getLowestInvisible() const {
             return _lowestInvisible;
         }
+
+        /**
+         * A KVRecoveryUnit may be asked to create a new RecoveryUnit
+         * suitable for its engine (for capped deletes, see
+         * KVRecordStoreCapped::deleteAsNeeded).
+         */
+        virtual KVRecoveryUnit *newRecoveryUnit() const = 0;
     };
 
 } // namespace mongo

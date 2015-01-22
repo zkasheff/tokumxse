@@ -29,15 +29,19 @@
 *    it in the license file.
 */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
+
 #include <boost/scoped_ptr.hpp>
 
 #include "mongo/base/checked_cast.h"
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/catalog/collection_options.h"
+#include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/storage/kv/dictionary/kv_record_store_capped.h"
 #include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
 #include "mongo/db/storage/oplog_hack.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 
@@ -50,8 +54,10 @@ namespace mongo {
                                               bool engineSupportsDocLocking)
         : KVRecordStore(db, opCtx, ns, ident, options, sizeStorer),
           _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
+          _cappedMaxSizeSlack(std::min(_cappedMaxSize/10, int64_t(16<<20))),
           _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
           _cappedDeleteCallback(NULL),
+          _cappedDeleteCheckCount(0),
           _engineSupportsDocLocking(engineSupportsDocLocking),
           _isOplog(NamespaceString::oplog(ns)),
           _idTracker(_engineSupportsDocLocking
@@ -76,6 +82,22 @@ namespace mongo {
         return false;
     }
 
+    class TempRecoveryUnitSwap {
+        OperationContext *_txn;
+        KVRecoveryUnit *_oldRecoveryUnit;
+
+    public:
+        TempRecoveryUnitSwap(OperationContext *txn)
+            : _txn(txn),
+              _oldRecoveryUnit(checked_cast<KVRecoveryUnit *>(_txn->releaseRecoveryUnit())) {
+            _txn->setRecoveryUnit(_oldRecoveryUnit->newRecoveryUnit());
+        }
+        ~TempRecoveryUnitSwap() {
+            boost::scoped_ptr<RecoveryUnit> deleting(_txn->releaseRecoveryUnit());
+            _txn->setRecoveryUnit(_oldRecoveryUnit);
+        }
+    };
+
     void KVRecordStoreCapped::deleteAsNeeded(OperationContext *txn) {
         if (!needsDelete(txn)) {
             // nothing to do
@@ -83,20 +105,85 @@ namespace mongo {
         }
 
         // Only one thread should do deletes at a time, otherwise they'll conflict.
-        boost::mutex::scoped_lock lock(_cappedDeleteMutex, boost::try_to_lock);
-        if (!lock) {
+        boost::mutex::scoped_lock lock(_cappedDeleteMutex, boost::defer_lock);
+        if (_cappedMaxDocs != -1) {
+            lock.lock();
+        } else if (_cappedDeleteCheckCount.addAndFetch(1) % 100 > 0) {
+            // If we're capping on size, only check once in a while.
+            // Maybe this doesn't need atomics but it's hard to prove that
+            // things will work without them, so we'll use them for now
+            // and remove them later if it's a problem.
             return;
+        } else {
+            if (!lock.try_lock()) {
+                // Someone else is deleting old records. Apply back-pressure if too far behind,
+                // otherwise continue.
+                if ((dataSize(txn) - _cappedMaxSize) < _cappedMaxSizeSlack)
+                    return;
+
+                lock.lock();
+
+                // If we already waited, let someone else do cleanup unless we are significantly
+                // over the limit.
+                if ((dataSize(txn) - _cappedMaxSize) < (2 * _cappedMaxSizeSlack))
+                    return;
+            }
         }
 
-        // Delete documents while we are over-full and the iterator has more.
-        for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
-             needsDelete(txn) && !iter->isEOF(); ) {
-            const RecordId oldest = iter->getNext();
-            if (_cappedDeleteCallback) {
-              // need to notify higher layers that a RecordId is about to be deleted
-              uassertStatusOK(_cappedDeleteCallback->aboutToDeleteCapped(txn, oldest, iter->dataFor(oldest)));
+        // we do this is a side transaction in case it aborts
+        TempRecoveryUnitSwap swap(txn);
+
+        int64_t ds = dataSize(txn);
+        int64_t nr = numRecords(txn);
+        int64_t sizeOverCap = (ds > _cappedMaxSize) ? ds - _cappedMaxSize : 0;
+        int64_t sizeSaved = 0;
+        int64_t docsOverCap = (_cappedMaxDocs != -1 && nr > _cappedMaxDocs) ? nr - _cappedMaxDocs : 0;
+        int64_t docsRemoved = 0;
+
+        try {
+            WriteUnitOfWork wuow(txn);
+
+            // We're going to notify the underlying store that we've
+            // deleted this range of ids.  In TokuFT, this will trigger an
+            // optimize.
+            RecordId firstDeleted, lastDeleted;
+
+            // Delete documents while we are over-full and the iterator has more.
+            //
+            // Note that the iterator we get has the _idTracker's logic
+            // already built in, so we don't need to worry about deleting
+            // records that are not yet committed, including the one we
+            // just inserted
+            for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
+                 ((sizeSaved < sizeOverCap || docsRemoved < docsOverCap) &&
+                  docsRemoved < 1000 &&
+                  !iter->isEOF());
+                 ) {
+                const RecordId oldest = iter->getNext();
+
+                ++docsRemoved;
+                sizeSaved += iter->dataFor(oldest).size();
+
+                if (_cappedDeleteCallback) {
+                    // need to notify higher layers that a RecordId is about to be deleted
+                    uassertStatusOK(_cappedDeleteCallback->aboutToDeleteCapped(txn, oldest, iter->dataFor(oldest)));
+                }
+                deleteRecord(txn, oldest);
+
+                if (firstDeleted.isNull()) {
+                    firstDeleted = oldest;
+                }
+                dassert(oldest > lastDeleted);
+                lastDeleted = oldest;
             }
-            deleteRecord(txn, oldest);
+
+            if (docsRemoved > 0) {
+                _db->justDeletedCappedRange(txn, Slice::of(KeyString(firstDeleted)), Slice::of(KeyString(lastDeleted)));
+                wuow.commit();
+            }
+        } catch (WriteConflictException) {
+            log() << "Got conflict truncating capped, ignoring.";
+            return;
         }
     }
 

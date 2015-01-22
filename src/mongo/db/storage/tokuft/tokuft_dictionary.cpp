@@ -45,6 +45,7 @@
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/log.h"
+#include "mongo/util/timer.h"
 
 #include <db.h>
 #include <ftcxx/cursor.hpp>
@@ -170,6 +171,45 @@ namespace mongo {
     Status TokuFTDictionary::remove(OperationContext *opCtx, const Slice &key) {
         int r = _db.del(_getDBTxn(opCtx), slice2ftslice(key), _getWriteFlags(opCtx));
         return statusFromTokuFTError(r);
+    }
+
+    class CappedDeleteRangeOptimizeCallback {
+        static const size_t kMaxLoops = 250;
+        Timer _timer;
+        int _lastWarnedAboutTime;
+        size_t _lastLoopsWarning;
+
+    public:
+        CappedDeleteRangeOptimizeCallback()
+            : _lastWarnedAboutTime(0),
+              _lastLoopsWarning(40)  // Start warning at 50
+        {}
+
+        int operator()(float progress, size_t loops) {
+            if (loops - _lastLoopsWarning >= 10) {
+                _lastLoopsWarning = loops;
+                warning() << "TokuFT: Capped deleter optimized " << _lastLoopsWarning << " nodes before giving up, may be falling behind.";
+            }
+            int secs = _timer.seconds();
+            if (secs >= 10) {
+                severe() << "TokuFT: Capped deleter has been optimizing for " << secs << " seconds without yielding.  "
+                         << "Giving up on optimizing to avoid locking the server.";
+                return -1;
+            } else if (secs > _lastWarnedAboutTime) {
+                _lastWarnedAboutTime = secs;
+                warning() << "TokuFT: Capped deleter has been optimizing for " << _lastWarnedAboutTime << " seconds without yielding.";
+            }
+            return 0;
+        }
+    };
+
+    void TokuFTDictionary::justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right) {
+        dassert(encoding().isRecordStore());
+        Slice negInf = Slice::of(KeyString(RecordId::min()));
+        int r = _db.hot_optimize(slice2ftslice(negInf), slice2ftslice(right), CappedDeleteRangeOptimizeCallback());
+        if (r != -1) {
+            uassertStatusOK(statusFromTokuFTError(r));
+        }
     }
 
     KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const Slice &key, const int direction) const {
