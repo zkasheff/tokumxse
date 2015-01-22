@@ -67,6 +67,10 @@ namespace mongo {
 
         void *writingPtr(void *data, size_t len);
 
+        void setRollbackWritesDisabled() {
+            _rollbackWritesDisabled = true;
+        }
+
         bool hasSnapshot() const;
 
     private:
@@ -78,6 +82,7 @@ namespace mongo {
 
         int _depth;
         Changes _changes;
+        bool _rollbackWritesDisabled;
 
         bool _knowsAboutReplicationState;
         bool _isReplicaSetSecondary;

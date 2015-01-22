@@ -132,6 +132,8 @@ namespace mongo {
 
         virtual void registerChange(Change* change);
 
+        virtual void setRollbackWritesDisabled() {}
+
         static KVHeapRecoveryUnit* getKVHeapRecoveryUnit(OperationContext* opCtx);
     };
 

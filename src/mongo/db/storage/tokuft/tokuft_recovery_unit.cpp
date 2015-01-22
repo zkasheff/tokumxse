@@ -45,7 +45,7 @@ namespace mongo {
 
     TokuFTRecoveryUnit::TokuFTRecoveryUnit(const ftcxx::DBEnv &env) :
         // We use depth to track transaction nesting
-        _env(env), _txn(), _depth(0), _knowsAboutReplicationState(false) {
+        _env(env), _txn(), _depth(0), _rollbackWritesDisabled(false), _knowsAboutReplicationState(false) {
     }
 
     TokuFTRecoveryUnit::~TokuFTRecoveryUnit() {
@@ -107,6 +107,12 @@ namespace mongo {
         }
         _changes.clear();
 
+        if (_rollbackWritesDisabled && hasSnapshot()) {
+            // Probably cheaper to commit than to send abort messages,
+            // especially if they're all inserts.
+            _txn.commit(DB_TXN_NOSYNC);
+        }
+        _rollbackWritesDisabled = false;
         _txn = ftcxx::DBTxn();
     }
 
