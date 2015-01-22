@@ -281,7 +281,7 @@ namespace mongo {
                                                      const char* data,
                                                      int len,
                                                      bool enforceQuota,
-                                                     UpdateMoveNotifier* notifier) {
+                                                     UpdateNotifier* notifier) {
         const KeyString key(id);
         const Slice value(data, len);
 
