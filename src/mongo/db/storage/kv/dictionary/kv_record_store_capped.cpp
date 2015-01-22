@@ -92,6 +92,10 @@ namespace mongo {
         for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
              needsDelete(txn) && !iter->isEOF(); ) {
             const RecordId oldest = iter->getNext();
+            if (_cappedDeleteCallback) {
+              // need to notify higher layers that a RecordId is about to be deleted
+              uassertStatusOK(_cappedDeleteCallback->aboutToDeleteCapped(txn, oldest, iter->dataFor(oldest)));
+            }
             deleteRecord(txn, oldest);
         }
     }
@@ -140,14 +144,6 @@ namespace mongo {
         Slice value(doc->documentSize());
         doc->writeDocument(value.mutableData());
         return insertRecord(txn, value.data(), value.size(), enforceQuota);
-    }
-
-    void KVRecordStoreCapped::deleteRecord( OperationContext* txn, const RecordId& dl ) {
-        if (_cappedDeleteCallback) {
-            // need to notify higher layers that a RecordId is about to be deleted
-            uassertStatusOK(_cappedDeleteCallback->aboutToDeleteCapped(txn, dl));
-        }
-        KVRecordStore::deleteRecord(txn, dl);
     }
 
     void KVRecordStoreCapped::appendCustomStats( OperationContext* txn,

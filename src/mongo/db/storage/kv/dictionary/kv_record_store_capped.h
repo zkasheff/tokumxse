@@ -64,8 +64,6 @@ namespace mongo {
                                                   const DocWriter* doc,
                                                   bool enforceQuota );
 
-        virtual void deleteRecord( OperationContext* txn, const RecordId& dl );
-
         virtual RecordIterator* getIterator( OperationContext* txn,
                                              const RecordId& start = RecordId(),
                                              const CollectionScanParams::Direction& dir =
