@@ -206,7 +206,11 @@ namespace mongo {
     void TokuFTDictionary::justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right) {
         dassert(encoding().isRecordStore());
         Slice negInf = Slice::of(KeyString(RecordId::min()));
-        int r = _db.hot_optimize(slice2ftslice(negInf), slice2ftslice(right), CappedDeleteRangeOptimizeCallback());
+        // Since the transaction doing the capped insert that caused these
+        // deletes is still live, there's no sense in optimizing the range
+        // [left, right], so just optimize anything left of the range
+        // which would have been deleted earlier.
+        int r = _db.hot_optimize(slice2ftslice(negInf), slice2ftslice(left), CappedDeleteRangeOptimizeCallback());
         if (r != -1) {
             uassertStatusOK(statusFromTokuFTError(r));
         }

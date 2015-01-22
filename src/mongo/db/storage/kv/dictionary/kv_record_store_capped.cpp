@@ -57,7 +57,6 @@ namespace mongo {
           _cappedMaxSizeSlack(std::min(_cappedMaxSize/10, int64_t(16<<20))),
           _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
           _cappedDeleteCallback(NULL),
-          _cappedDeleteCheckCount(0),
           _engineSupportsDocLocking(engineSupportsDocLocking),
           _isOplog(NamespaceString::oplog(ns)),
           _idTracker(_engineSupportsDocLocking
@@ -108,12 +107,6 @@ namespace mongo {
         boost::mutex::scoped_lock lock(_cappedDeleteMutex, boost::defer_lock);
         if (_cappedMaxDocs != -1) {
             lock.lock();
-        } else if (_cappedDeleteCheckCount.addAndFetch(1) % 100 > 0) {
-            // If we're capping on size, only check once in a while.
-            // Maybe this doesn't need atomics but it's hard to prove that
-            // things will work without them, so we'll use them for now
-            // and remove them later if it's a problem.
-            return;
         } else {
             if (!lock.try_lock()) {
                 // Someone else is deleting old records. Apply back-pressure if too far behind,
