@@ -270,13 +270,14 @@ namespace mongo {
         return loc;
     }
 
-    Status Collection::aboutToDeleteCapped( OperationContext* txn, const RecordId& loc ) {
-
-        BSONObj doc = docFor( txn, loc );
+    Status Collection::aboutToDeleteCapped( OperationContext* txn,
+                                            const RecordId& loc,
+                                            RecordData data ) {
 
         /* check if any cursors point to us.  if so, advance them. */
         _cursorManager.invalidateDocument(txn, loc, INVALIDATION_DELETION);
 
+        BSONObj doc = data.releaseToBson();
         _indexCatalog.unindexRecord(txn, doc, loc, false);
 
         return Status::OK();
@@ -413,8 +414,6 @@ namespace mongo {
             }
         }
 
-        // Broadcast the mutation so that query results stay correct.
-        _cursorManager.invalidateDocument(txn, oldLocation, INVALIDATION_MUTATION);
         invariant( txnId == txn->recoveryUnit()->getMyTransactionCount() );
         return newLocation;
     }
@@ -426,6 +425,13 @@ namespace mongo {
         moveCounter.increment();
         _cursorManager.invalidateDocument(txn, oldLocation, INVALIDATION_DELETION);
         _indexCatalog.unindexRecord(txn, BSONObj(oldBuffer), oldLocation, true);
+        return Status::OK();
+    }
+
+    Status Collection::recordStoreGoingToUpdateInPlace( OperationContext* txn,
+                                                        const RecordId& loc ) {
+        // Broadcast the mutation so that query results stay correct.
+        _cursorManager.invalidateDocument(txn, loc, INVALIDATION_MUTATION);
         return Status::OK();
     }
 

@@ -77,7 +77,7 @@ namespace mongo {
                                                  const char* data,
                                                  int len,
                                                  bool enforceQuota,
-                                                 UpdateMoveNotifier* notifier) {
+                                                 UpdateNotifier* notifier) {
             invariant(false);
         }
 
@@ -203,6 +203,8 @@ namespace mongo {
         }
 
         virtual void* writingPtr(void* data, size_t len);
+
+        virtual void setRollbackWritesDisabled() {}
 
         // -----------------------
 

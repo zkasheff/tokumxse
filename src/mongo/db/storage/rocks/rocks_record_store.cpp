@@ -317,7 +317,11 @@ namespace mongo {
                 }
 
                 if (_cappedDeleteCallback) {
-                    uassertStatusOK(_cappedDeleteCallback->aboutToDeleteCapped(txn, oldest));
+                    uassertStatusOK(
+                        _cappedDeleteCallback->aboutToDeleteCapped(
+                            txn,
+                            oldest,
+                            RecordData(iter->value().data(), iter->value().size())));
                 }
 
                 deleteRecord(txn, oldest);
@@ -405,7 +409,7 @@ namespace mongo {
                                                         const char* data,
                                                         int len,
                                                         bool enforceQuota,
-                                                        UpdateMoveNotifier* notifier ) {
+                                                        UpdateNotifier* notifier ) {
         RocksRecoveryUnit* ru = RocksRecoveryUnit::getRocksRecoveryUnit( txn );
         if (!ru->transaction()->registerWrite(_getTransactionID(loc))) {
             throw WriteConflictException();
