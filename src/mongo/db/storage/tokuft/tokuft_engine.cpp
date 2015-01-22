@@ -322,7 +322,7 @@ namespace mongo {
         Status s = diskFormatVersion.initialize(&opCtx);
         if (!s.isOK()) {
             severe() << "TokuFT: While checking disk format version, got error " << s;
-            fassertFailed(28603);
+            fassertFailed(28612);
         }
         s = diskFormatVersion.upgradeToCurrent(&opCtx);
         if (!s.isOK()) {
