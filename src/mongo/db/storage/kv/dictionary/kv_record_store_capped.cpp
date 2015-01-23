@@ -150,7 +150,9 @@ namespace mongo {
             // already built in, so we don't need to worry about deleting
             // records that are not yet committed, including the one we
             // just inserted
-            for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
+            for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn, (_lastDeletedId.isNull()
+                                                                          ? RecordId::min()
+                                                                          : _lastDeletedId)));
                  ((sizeSaved < sizeOverCap || docsRemoved < docsOverCap) &&
                   !iter->isEOF());
                  ) {
@@ -193,6 +195,7 @@ namespace mongo {
             }
 
             if (docsRemoved > 0) {
+                _lastDeletedId = lastDeleted;
                 _db->justDeletedCappedRange(txn, Slice::of(KeyString(firstDeleted)), Slice::of(KeyString(lastDeleted)),
                                             sizeSaved, docsRemoved);
                 wuow.commit();
