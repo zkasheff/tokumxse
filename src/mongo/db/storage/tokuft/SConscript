@@ -24,6 +24,7 @@ if has_option("tokuft"):
     env.Library(
         target= 'storage_tokuft_base',
         source= [
+            'tokuft_capped_delete_range_optimizer.cpp',
             'tokuft_disk_format.cpp',
             'tokuft_engine.cpp',
             'tokuft_errors.cpp',

@@ -39,6 +39,7 @@
 #include "mongo/db/storage/kv/dictionary/kv_dictionary_update.h"
 #include "mongo/db/storage/kv/slice.h"
 #include "mongo/db/storage/record_data.h"
+#include "mongo/db/storage/tokuft/tokuft_capped_delete_range_optimizer.h"
 #include "mongo/db/storage/tokuft/tokuft_dictionary_options.h"
 
 #include <ftcxx/cursor.hpp>
@@ -174,6 +175,7 @@ namespace mongo {
 
         TokuFTDictionaryOptions _options;
         ftcxx::DB _db;
+        boost::scoped_ptr<TokuFTCappedDeleteRangeOptimizer> _rangeOptimizer;
     };
 
 } // namespace mongo

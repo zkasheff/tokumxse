@@ -45,7 +45,6 @@
 #include "mongo/db/storage/tokuft/tokuft_recovery_unit.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/log.h"
-#include "mongo/util/timer.h"
 
 #include <db.h>
 #include <ftcxx/cursor.hpp>
@@ -173,48 +172,21 @@ namespace mongo {
         return statusFromTokuFTError(r);
     }
 
-    class CappedDeleteRangeOptimizeCallback {
-        static const size_t kMaxLoops = 250;
-        Timer _timer;
-        int _lastWarnedAboutTime;
-        size_t _lastLoopsWarning;
-
-    public:
-        CappedDeleteRangeOptimizeCallback()
-            : _lastWarnedAboutTime(0),
-              _lastLoopsWarning(40)  // Start warning at 50
-        {}
-
-        int operator()(float progress, size_t loops) {
-            if (loops > _lastLoopsWarning && loops - _lastLoopsWarning >= 10) {
-                _lastLoopsWarning = loops;
-                warning() << "TokuFT: Capped deleter has optimized " << _lastLoopsWarning << " nodes, may be falling behind.";
-            }
-            int secs = _timer.seconds();
-            if (secs >= 10) {
-                severe() << "TokuFT: Capped deleter has been optimizing for " << secs << " seconds without yielding.  "
-                         << "Giving up on optimizing to avoid locking the server.";
-                return -1;
-            } else if (secs > _lastWarnedAboutTime) {
-                _lastWarnedAboutTime = secs;
-                warning() << "TokuFT: Capped deleter has been optimizing for " << _lastWarnedAboutTime << " seconds without yielding.";
-            }
-            return 0;
-        }
-    };
-
     void TokuFTDictionary::justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right,
                                                   int64_t sizeSaved, int64_t docsRemoved) {
-        dassert(encoding().isRecordStore());
-        Slice negInf = Slice::of(KeyString(RecordId::min()));
+        if (!_rangeOptimizer) {
+            // We're in the cappedDeleteMutex so this is safe.
+            _rangeOptimizer.reset(new TokuFTCappedDeleteRangeOptimizer(_db));
+        }
+
+        const Encoding &enc = encoding();
+        dassert(enc.isRecordStore());
+        RecordId leftId = enc.KVDictionary::Encoding::extractRecordId(left);
         // Since the transaction doing the capped insert that caused these
         // deletes is still live, there's no sense in optimizing the range
         // [left, right], so just optimize anything left of the range
         // which would have been deleted earlier.
-        int r = _db.hot_optimize(slice2ftslice(negInf), slice2ftslice(left), CappedDeleteRangeOptimizeCallback());
-        if (r != -1) {
-            uassertStatusOK(statusFromTokuFTError(r));
-        }
+        _rangeOptimizer->updateMaxDeleted(leftId, sizeSaved, docsRemoved);
     }
 
     KVDictionary::Cursor *TokuFTDictionary::getCursor(OperationContext *opCtx, const Slice &key, const int direction) const {
