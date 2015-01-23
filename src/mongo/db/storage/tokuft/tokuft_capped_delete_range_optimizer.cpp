@@ -79,20 +79,24 @@ namespace mongo {
         class CappedDeleteRangeOptimizeCallback {
             Timer _timer;
             int _lastWarnedAboutTime;
-            size_t _lastLoopsWarning;
+            static const size_t kLoopsWarningLimit = 100;
+            size_t _loops;
 
         public:
             CappedDeleteRangeOptimizeCallback()
                 : _lastWarnedAboutTime(0),
-                  _lastLoopsWarning(40)  // Start warning at 50
+                  _loops(0)
             {}
 
-            int operator()(float progress, size_t loops) {
-                if (loops > _lastLoopsWarning && loops - _lastLoopsWarning >= 10) {
-                    _lastLoopsWarning = loops;
-                    warning() << "TokuFT: Capped deleter has optimized " << _lastLoopsWarning
-                              << " nodes in one shot so far, may be falling behind.";
+            ~CappedDeleteRangeOptimizeCallback() {
+                if (_loops >= kLoopsWarningLimit) {
+                    warning() << "TokuFT: Capped deleter optimized " << _lastLoopsWarning
+                              << " nodes in one shot, may be falling behind.";
                 }
+            }
+
+            int operator()(float progress, size_t loops) {
+                _loops = loops;
                 int secs = _timer.seconds();
                 if (secs > _lastWarnedAboutTime) {
                     _lastWarnedAboutTime = secs;
