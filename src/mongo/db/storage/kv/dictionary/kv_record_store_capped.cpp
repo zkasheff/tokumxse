@@ -176,6 +176,8 @@ namespace mongo {
                 // latency of the client that's doing the deletes for
                 // everyone.
                 if (sizeOverCap >= _cappedMaxSizeSlack) {
+                    // If we're over the slack amount, everyone's going to
+                    // block on us anyway, so we may as well keep working.
                     continue;
                 }
                 if (sizeOverCap < (_cappedMaxSizeSlack / 4) && docsRemoved >= 1000) {
@@ -188,8 +190,6 @@ namespace mongo {
                     // someone else a chance to shoulder that latency.
                     break;
                 }
-                // If we're over the slack amount, everyone's going to
-                // block on us anyway, so we may as well keep working.
             }
 
             if (docsRemoved > 0) {
