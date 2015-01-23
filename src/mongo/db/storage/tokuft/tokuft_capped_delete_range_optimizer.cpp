@@ -90,8 +90,8 @@ namespace mongo {
 
             ~CappedDeleteRangeOptimizeCallback() {
                 if (_loops >= kLoopsWarningLimit) {
-                    warning() << "TokuFT: Capped deleter optimized " << _lastLoopsWarning
-                              << " nodes in one shot, may be falling behind.";
+                    LOG(1) << "TokuFT: Capped deleter optimized " << _loops
+                           << " nodes in one shot, may be falling behind.";
                 }
             }
 
