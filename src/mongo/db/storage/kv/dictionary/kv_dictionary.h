@@ -187,12 +187,15 @@ namespace mongo {
         }
 
         /**
-         * Called after a capped collection deletes a contiguous range of
-         * keys at the beginning of the dictionary.  Gives the
-         * implementation a chance to do something to optimize the
+         * Called after a capped collection deletes a contiguous range of keys at the beginning of
+         * the dictionary.  Gives the implementation a chance to do something to optimize the
          * dictionary.
+         *
+         * Note that this is called while holding the cappedDeleteMutex which will block threads if
+         * the deleter gets too far behind as backpressure.
          */
-        virtual void justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right) {}
+        virtual void justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right,
+                                            int64_t sizeSaved, int64_t docsRemoved) {}
 
         /**
          * Name of the dictionary.

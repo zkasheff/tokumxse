@@ -171,7 +171,8 @@ namespace mongo {
             }
 
             if (docsRemoved > 0) {
-                _db->justDeletedCappedRange(txn, Slice::of(KeyString(firstDeleted)), Slice::of(KeyString(lastDeleted)));
+                _db->justDeletedCappedRange(txn, Slice::of(KeyString(firstDeleted)), Slice::of(KeyString(lastDeleted)),
+                                            sizeSaved, docsRemoved);
                 wuow.commit();
             }
         } catch (WriteConflictException) {

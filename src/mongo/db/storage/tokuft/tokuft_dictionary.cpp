@@ -203,7 +203,8 @@ namespace mongo {
         }
     };
 
-    void TokuFTDictionary::justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right) {
+    void TokuFTDictionary::justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right,
+                                                  int64_t sizeSaved, int64_t docsRemoved) {
         dassert(encoding().isRecordStore());
         Slice negInf = Slice::of(KeyString(RecordId::min()));
         // Since the transaction doing the capped insert that caused these

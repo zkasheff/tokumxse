@@ -142,7 +142,8 @@ namespace mongo {
 
         virtual Status remove(OperationContext *opCtx, const Slice &key);
 
-        virtual void justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right);
+        virtual void justDeletedCappedRange(OperationContext *opCtx, const Slice &left, const Slice &right,
+                                            int64_t sizeSaved, int64_t docsRemoved);
 
         virtual KVDictionary::Cursor *getCursor(OperationContext *opCtx, const Slice &key, const int direction = 1) const;
 
