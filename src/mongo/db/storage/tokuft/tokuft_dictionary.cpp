@@ -186,7 +186,7 @@ namespace mongo {
         {}
 
         int operator()(float progress, size_t loops) {
-            if (loops - _lastLoopsWarning >= 10) {
+            if (loops > _lastLoopsWarning && loops - _lastLoopsWarning >= 10) {
                 _lastLoopsWarning = loops;
                 warning() << "TokuFT: Capped deleter optimized " << _lastLoopsWarning << " nodes before giving up, may be falling behind.";
             }
