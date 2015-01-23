@@ -76,13 +76,17 @@ namespace mongo {
                     ? orderingDeserialize(serialized.data() + 1)
                     : Ordering::make(BSONObj()))
     {
+        // Can't be both a record store and an index.
         dassert(!(_isRecordStore && _isIndex));
+        // If not a record store or index, we must be the "empty encoding".
+        dassert((_isRecordStore || _isIndex) || serialized.size() == 0);
+          
     }
 
     Slice KVDictionary::Encoding::serialize() const {
         if (_isRecordStore) {
             char c = 0;
-            return Slice::of(c);
+            return Slice::of(c).owned();
         } else if (_isIndex) {
             Slice s(1 + sizeof(Ordering));
             s.mutableData()[0] = 1;
