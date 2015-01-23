@@ -54,7 +54,7 @@ namespace mongo {
                                               bool engineSupportsDocLocking)
         : KVRecordStore(db, opCtx, ns, ident, options, sizeStorer),
           _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
-          _cappedMaxSizeSlack(std::min(_cappedMaxSize/10, int64_t(16<<20))),
+          _cappedMaxSizeSlack(std::min(_cappedMaxSize/10, int64_t(64<<20))),
           _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
           _cappedDeleteCallback(NULL),
           _engineSupportsDocLocking(engineSupportsDocLocking),
