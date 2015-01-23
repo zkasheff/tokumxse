@@ -42,6 +42,7 @@
 #include "mongo/db/storage/kv/dictionary/visible_id_tracker.h"
 #include "mongo/db/storage/oplog_hack.h"
 #include "mongo/util/log.h"
+#include "mongo/util/timer.h"
 
 namespace mongo {
 
@@ -141,6 +142,8 @@ namespace mongo {
             // optimize.
             RecordId firstDeleted, lastDeleted;
 
+            Timer t;
+
             // Delete documents while we are over-full and the iterator has more.
             //
             // Note that the iterator we get has the _idTracker's logic
@@ -149,7 +152,6 @@ namespace mongo {
             // just inserted
             for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
                  ((sizeSaved < sizeOverCap || docsRemoved < docsOverCap) &&
-                  docsRemoved < 1000 &&
                   !iter->isEOF());
                  ) {
                 const RecordId oldest = iter->getNext();
@@ -168,6 +170,26 @@ namespace mongo {
                 }
                 dassert(oldest > lastDeleted);
                 lastDeleted = oldest;
+
+                // Now, decide whether to keep working, we want to balance
+                // staying on top of the deletion workload with the
+                // latency of the client that's doing the deletes for
+                // everyone.
+                if (sizeOverCap >= _cappedMaxSizeSlack) {
+                    continue;
+                }
+                if (sizeOverCap < (_cappedMaxSizeSlack / 4) && docsRemoved >= 1000) {
+                    // If we aren't too much over and we've done a fair
+                    // amount of work, take a break.
+                    break;
+                } else if (docsRemoved % 1000 == 0 && t.seconds() >= 4) {
+                    // If we're under the slack amount and we've already
+                    // spent a second working on this, return and give
+                    // someone else a chance to shoulder that latency.
+                    break;
+                }
+                // If we're over the slack amount, everyone's going to
+                // block on us anyway, so we may as well keep working.
             }
 
             if (docsRemoved > 0) {

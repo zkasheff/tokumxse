@@ -161,9 +161,6 @@ namespace mongo {
         static const int64_t lowWatermark = 32<<20;
         static const int64_t highWatermark = lowWatermark * 4;
         if (_optimizableSize > highWatermark) {
-            log() << "TokuFT: Capped delete optimizer has fallen " << (_optimizableSize / (1<<20))
-                  << "MB behind, waiting for it to catch up somewhat.";
-
             // This will wait for the optimize thread to catch up.  It should actually go to zero
             // rather than just below lowWatermark, but we use hysteresis because it's the right
             // thing if the implementation changes.
@@ -172,6 +169,9 @@ namespace mongo {
             // gradually, once other threads insert enough to get them to start waiting behind that
             // mutex.
             while (_optimizableSize > lowWatermark) {
+                log() << "TokuFT: Capped delete optimizer is " << (_optimizableSize>>20)
+                      << "MB behind, waiting for it to catch up somewhat.";
+
                 _backpressureCond.wait(lk);
             }
         }
