@@ -57,6 +57,7 @@ namespace mongo {
           _cappedMaxSize(options.cappedSize ? options.cappedSize : 4096 ),
           _cappedMaxSizeSlack(std::min(_cappedMaxSize/10, int64_t(64<<20))),
           _cappedMaxDocs(options.cappedMaxDocs ? options.cappedMaxDocs : -1),
+          _lastDeletedId(RecordId::min()),
           _cappedDeleteCallback(NULL),
           _engineSupportsDocLocking(engineSupportsDocLocking),
           _isOplog(NamespaceString::oplog(ns)),
@@ -150,9 +151,7 @@ namespace mongo {
             // already built in, so we don't need to worry about deleting
             // records that are not yet committed, including the one we
             // just inserted
-            for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn, (_lastDeletedId.isNull()
-                                                                          ? RecordId::min()
-                                                                          : _lastDeletedId)));
+            for (boost::scoped_ptr<RecordIterator> iter(getIterator(txn));
                  ((sizeSaved < sizeOverCap || docsRemoved < docsOverCap) &&
                   !iter->isEOF());
                  ) {
@@ -195,10 +194,11 @@ namespace mongo {
             }
 
             if (docsRemoved > 0) {
-                _lastDeletedId = lastDeleted;
                 _db->justDeletedCappedRange(txn, Slice::of(KeyString(firstDeleted)), Slice::of(KeyString(lastDeleted)),
                                             sizeSaved, docsRemoved);
                 wuow.commit();
+                dassert(lastDeleted > _lastDeletedId);
+                _lastDeletedId = lastDeleted;
             }
         } catch (WriteConflictException) {
             log() << "Got conflict truncating capped, ignoring.";
@@ -309,20 +309,24 @@ namespace mongo {
     RecordIterator* KVRecordStoreCapped::getIterator(OperationContext* txn,
                                                      const RecordId& start,
                                                      const CollectionScanParams::Direction& dir) const {
+        const RecordId &realStart = ((dir == CollectionScanParams::FORWARD &&
+                                      (start.isNull() || start == RecordId::min()))
+                                     ? _lastDeletedId
+                                     : start);
         if (_engineSupportsDocLocking && dir == CollectionScanParams::FORWARD) {
             KVRecoveryUnit *ru = checked_cast<KVRecoveryUnit *>(txn->recoveryUnit());
             // Must set this before we call KVRecordStore::getIterator because that will create a
             // snapshot.
             _idTracker->setRecoveryUnitRestriction(ru);
 
-            std::auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, start, dir));
+            std::auto_ptr<RecordIterator> iter(KVRecordStore::getIterator(txn, realStart, dir));
 
             KVRecordIterator *kvIter = checked_cast<KVRecordIterator *>(iter.get());
             _idTracker->setIteratorRestriction(ru, kvIter);
 
             return iter.release();
         } else {
-            return KVRecordStore::getIterator(txn, start, dir);
+            return KVRecordStore::getIterator(txn, realStart, dir);
         }
     }
 
