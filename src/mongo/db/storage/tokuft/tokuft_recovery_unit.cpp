@@ -55,6 +55,8 @@ namespace mongo {
 
     void TokuFTRecoveryUnit::beginUnitOfWork(OperationContext *opCtx) {
         _depth++;
+        // Make sure we create a txn here so that we have a snapshot for getSnapshotId() later.
+        txn(opCtx);
     }
 
     int TokuFTRecoveryUnit::_commitFlags() {
