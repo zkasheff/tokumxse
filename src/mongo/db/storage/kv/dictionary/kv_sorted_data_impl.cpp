@@ -136,41 +136,29 @@ namespace mongo {
             return s;
         }
 
-        try {
-            if (!dupsAllowed) {
-                s = (_db->supportsDupKeyCheck()
-                     ? _db->dupKeyCheck(txn,
-                                        Slice::of(KeyString(key, _ordering, RecordId::min())),
-                                        Slice::of(KeyString(key, _ordering, RecordId::max())),
-                                        loc)
-                     : dupKeyCheck(txn, key, loc));
-                if (s == ErrorCodes::DuplicateKey) {
-                    // Adjust the message to include the key.
-                    return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
-                }
-                if (!s.isOK()) {
-                    return s;
-                }
-            }
-
-            KeyString keyString(key, _ordering, loc);
-            Slice val;
-            if (!keyString.getTypeBits().isAllZeros()) {
-                // Gotta love that strong C type system, protecting us from all the important errors...
-                val = Slice(reinterpret_cast<const char *>(keyString.getTypeBits().getBuffer()), keyString.getTypeBits().getSize());
-            }
-            s = _db->insert(txn, Slice::of(keyString), val, false);
-        } catch (WriteConflictException) {
-            if (!dupsAllowed) {
-                // If we see a WriteConflictException on a unique index, according to
-                // https://jira.mongodb.org/browse/SERVER-16337 we should consider it a duplicate
-                // key even if this means reporting false positives.
+        if (!dupsAllowed) {
+            s = (_db->supportsDupKeyCheck()
+                 ? _db->dupKeyCheck(txn,
+                                    Slice::of(KeyString(key, _ordering, RecordId::min())),
+                                    Slice::of(KeyString(key, _ordering, RecordId::max())),
+                                    loc)
+                 : dupKeyCheck(txn, key, loc));
+            if (s == ErrorCodes::DuplicateKey) {
+                // Adjust the message to include the key.
                 return Status(ErrorCodes::DuplicateKey, dupKeyError(key));
             }
-            throw;
+            if (!s.isOK()) {
+                return s;
+            }
         }
 
-        return s;
+        KeyString keyString(key, _ordering, loc);
+        Slice val;
+        if (!keyString.getTypeBits().isAllZeros()) {
+            // Gotta love that strong C type system, protecting us from all the important errors...
+            val = Slice(reinterpret_cast<const char *>(keyString.getTypeBits().getBuffer()), keyString.getTypeBits().getSize());
+        }
+        return _db->insert(txn, Slice::of(keyString), val, false);
     }
 
     void KVSortedDataImpl::unindex(OperationContext* txn,
