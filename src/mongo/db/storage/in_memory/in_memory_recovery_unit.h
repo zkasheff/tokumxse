@@ -45,7 +45,7 @@ namespace mongo {
         InMemoryRecoveryUnit() : _depth(0) {}
         virtual ~InMemoryRecoveryUnit();
 
-        virtual void beginUnitOfWork();
+        virtual void beginUnitOfWork(OperationContext* opCtx);
         virtual void commitUnitOfWork();
         virtual void endUnitOfWork();
 
@@ -64,6 +64,8 @@ namespace mongo {
         }
 
         virtual void setRollbackWritesDisabled() {}
+
+        virtual SnapshotId getSnapshotId() const { return SnapshotId(); }
 
     private:
         typedef boost::shared_ptr<Change> ChangePtr;

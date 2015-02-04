@@ -62,7 +62,7 @@ __wt_cache_pages_inuse(WT_CACHE *cache)
 static inline uint64_t
 __wt_cache_bytes_inuse(WT_CACHE *cache)
 {
-	return (cache->bytes_inmem - cache->bytes_evict);
+	return (cache->bytes_inmem);
 }
 
 /*
@@ -175,4 +175,3 @@ __wt_cache_full_check(WT_SESSION_IMPL *session)
 
 	return (__wt_cache_wait(session, full));
 }
-

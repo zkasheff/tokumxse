@@ -45,7 +45,7 @@ namespace mongo {
 
         virtual ~DurRecoveryUnit() { }
 
-        virtual void beginUnitOfWork();
+        virtual void beginUnitOfWork(OperationContext* opCtx);
         virtual void commitUnitOfWork();
         virtual void endUnitOfWork();
 
@@ -60,6 +60,7 @@ namespace mongo {
 
         virtual void setRollbackWritesDisabled();
 
+        virtual SnapshotId getSnapshotId() const { return SnapshotId(); }
     private:
         void commitChanges();
         void pushChangesToDurSubSystem();

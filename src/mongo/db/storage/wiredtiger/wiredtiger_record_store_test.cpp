@@ -100,7 +100,7 @@ namespace mongo {
 
             {
                 WriteUnitOfWork uow(&txn);
-                WT_SESSION* s = ru->getSession()->getSession();
+                WT_SESSION* s = ru->getSession(&txn)->getSession();
                 invariantWTOK( s->create( s, uri.c_str(), config.c_str() ) );
                 uow.commit();
             }
@@ -126,7 +126,7 @@ namespace mongo {
 
             {
                 WriteUnitOfWork uow(&txn);
-                WT_SESSION* s = ru->getSession()->getSession();
+                WT_SESSION* s = ru->getSession(&txn)->getSession();
                 invariantWTOK( s->create( s, uri.c_str(), config.c_str() ) );
                 uow.commit();
             }
@@ -326,14 +326,15 @@ namespace mongo {
 
             {
                 WriteUnitOfWork uow( opCtx.get() );
-                WT_SESSION* s = ru->getSession()->getSession();
+                WT_SESSION* s = ru->getSession(opCtx.get())->getSession();
                 invariantWTOK( s->create( s, indexUri.c_str(), "" ) );
                 uow.commit();
             }
 
             {
                 WriteUnitOfWork uow( opCtx.get() );
-                ss.storeInto( WiredTigerRecoveryUnit::get( opCtx.get() )->getSession(), indexUri );
+                ss.storeInto( WiredTigerRecoveryUnit::get( opCtx.get() )->getSession(opCtx.get()),
+                              indexUri );
                 uow.commit();
             }
         }
@@ -341,7 +342,8 @@ namespace mongo {
         {
             scoped_ptr<OperationContext> opCtx( harnessHelper->newOperationContext() );
             WiredTigerSizeStorer ss2;
-            ss2.loadFrom( WiredTigerRecoveryUnit::get( opCtx.get() )->getSession(), indexUri );
+            ss2.loadFrom( WiredTigerRecoveryUnit::get( opCtx.get() )->getSession(opCtx.get()),
+                          indexUri );
             long long numRecords;
             long long dataSize;
             ss2.load( uri, &numRecords, &dataSize );
@@ -682,6 +684,45 @@ namespace {
             it->getNext();
             ASSERT( it->isEOF() );
         }
+    }
+
+    TEST(WiredTigerRecordStoreTest, CappedCursorRollover) {
+        scoped_ptr<WiredTigerHarnessHelper> harnessHelper( new WiredTigerHarnessHelper() );
+        scoped_ptr<RecordStore> rs(harnessHelper->newCappedRecordStore("a.b", 10000, 5));
+
+        { // first insert 3 documents
+            scoped_ptr<OperationContext> opCtx( harnessHelper->newOperationContext() );
+            for ( int i = 0; i < 3; ++i ) {
+                WriteUnitOfWork uow( opCtx.get() );
+                StatusWith<RecordId> res = rs->insertRecord( opCtx.get(), "a", 2, false );
+                ASSERT_OK( res.getStatus() );
+                uow.commit();
+            }
+        }
+
+        // set up our cursor that should rollover
+        scoped_ptr<OperationContext> cursorCtx( harnessHelper->newOperationContext() );
+        scoped_ptr<RecordIterator> it;
+        it.reset( rs->getIterator(cursorCtx.get()) );
+        ASSERT_FALSE(it->isEOF());
+        it->getNext();
+        ASSERT_FALSE(it->isEOF());
+        it->saveState();
+        cursorCtx->recoveryUnit()->commitAndRestart();
+
+        { // insert 100 documents which causes rollover
+            scoped_ptr<OperationContext> opCtx( harnessHelper->newOperationContext() );
+            for ( int i = 0; i < 100; i++ ) {
+                WriteUnitOfWork uow( opCtx.get() );
+                StatusWith<RecordId> res = rs->insertRecord( opCtx.get(), "a", 2, false );
+                ASSERT_OK( res.getStatus() );
+                uow.commit();
+            }
+        }
+
+        // cursor should now be dead
+        ASSERT_FALSE(it->restoreState(cursorCtx.get()));
+        ASSERT_TRUE(it->isEOF());
     }
 
     RecordId _oplogOrderInsertOplog( OperationContext* txn,

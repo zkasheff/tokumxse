@@ -45,12 +45,12 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/oplog_hack.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session_cache.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_size_storer.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/background.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -245,21 +245,13 @@ namespace {
 
         }
 
-        _backgroundThread.reset(_startBackgroundThread());
-        if (_backgroundThread) {
-            _backgroundThread->go();
-        }
+        _hasBackgroundThread = WiredTigerKVEngine::initRsOplogBackgroundThread(ns);
     }
 
     WiredTigerRecordStore::~WiredTigerRecordStore() {
         {
-            boost::mutex::scoped_lock lk(_cappedDeleterMutex);
+            boost::timed_mutex::scoped_lock lk(_cappedDeleterMutex);
             _shuttingDown = true;
-        }
-
-        if (_backgroundThread) {
-            // Need time to wake from sleep,a nd possible delete 1000 docs.
-            invariant(_backgroundThread->wait(10000));
         }
 
         LOG(1) << "~WiredTigerRecordStore for: " << ns();
@@ -274,7 +266,7 @@ namespace {
     }
 
     bool WiredTigerRecordStore::inShutdown() const {
-        boost::mutex::scoped_lock lk(_cappedDeleterMutex);
+        boost::timed_mutex::scoped_lock lk(_cappedDeleterMutex);
         return _shuttingDown;
     }
 
@@ -303,7 +295,7 @@ namespace {
     int64_t WiredTigerRecordStore::storageSize( OperationContext* txn,
                                                 BSONObjBuilder* extraInfo,
                                                 int infoLevel ) const {
-        WiredTigerSession* session = WiredTigerRecoveryUnit::get(txn)->getSession();
+        WiredTigerSession* session = WiredTigerRecoveryUnit::get(txn)->getSession(txn);
         StatusWith<int64_t> result = WiredTigerUtil::getStatisticsValueAs<int64_t>(
             session->getSession(),
             "statistics:" + getURI(), "statistics=(fast)", WT_STAT_DSRC_BLOCK_SIZE);
@@ -401,12 +393,12 @@ namespace {
             return 0;
 
         // ensure only one thread at a time can do deletes, otherwise they'll conflict.
-        boost::mutex::scoped_lock lock(_cappedDeleterMutex, boost::defer_lock);
+        boost::timed_mutex::scoped_lock lock(_cappedDeleterMutex, boost::defer_lock);
 
         if (_cappedMaxDocs != -1) {
             lock.lock(); // Max docs has to be exact, so have to check every time.
         }
-        else if(_backgroundThread) {
+        else if(_hasBackgroundThread) {
             // We are foreground, and there is a background thread,
 
             // Check if we need some back pressure.
@@ -417,7 +409,8 @@ namespace {
             // Back pressure needed!
             // We're not actually going to delete anything, but we're going to syncronize
             // on the deleter thread.
-            lock.lock();
+            // Don't wait forever: we're in a transaction, we could block eviction.
+            (void)lock.timed_lock(boost::posix_time::millisec(1000));
             return 0;
         }
         else {
@@ -427,7 +420,9 @@ namespace {
                 if ((_dataSize.load() - _cappedMaxSize) < _cappedMaxSizeSlack)
                     return 0;
 
-                lock.lock();
+                // Don't wait forever: we're in a transaction, we could block eviction.
+                if (!lock.timed_lock(boost::posix_time::millisec(1000)))
+                    return 0;
 
                 // If we already waited, let someone else do cleanup unless we are significantly
                 // over the limit.
@@ -447,7 +442,9 @@ namespace {
         invariant( realRecoveryUnit );
         WiredTigerSessionCache* sc = realRecoveryUnit->getSessionCache();
         txn->setRecoveryUnit( new WiredTigerRecoveryUnit( sc ) );
-        WT_SESSION* session = WiredTigerRecoveryUnit::get(txn)->getSession()->getSession();
+
+        WiredTigerRecoveryUnit::get(txn)->markNoTicketRequired(); // realRecoveryUnit already has
+        WT_SESSION* session = WiredTigerRecoveryUnit::get(txn)->getSession(txn)->getSession();
 
         int64_t dataSize = _dataSize.load();
         int64_t numRecords = _numRecords.load();
@@ -783,7 +780,7 @@ namespace {
 
         output->appendNumber( "nrecords", nrecords );
 
-        WiredTigerSession* session = WiredTigerRecoveryUnit::get(txn)->getSession();
+        WiredTigerSession* session = WiredTigerRecoveryUnit::get(txn)->getSession(txn);
         WT_SESSION* s = session->getSession();
         BSONObjBuilder bob(output->subobjStart(kWiredTigerEngineName));
         Status status = WiredTigerUtil::exportTableToBSON(s, "statistics:" + getURI(),
@@ -804,7 +801,7 @@ namespace {
             result->appendIntOrLL( "max", _cappedMaxDocs );
             result->appendIntOrLL( "maxSize", static_cast<long long>(_cappedMaxSize / scale) );
         }
-        WiredTigerSession* session = WiredTigerRecoveryUnit::get(txn)->getSession();
+        WiredTigerSession* session = WiredTigerRecoveryUnit::get(txn)->getSession(txn);
         WT_SESSION* s = session->getSession();
         BSONObjBuilder bob(result->subobjStart(kWiredTigerEngineName));
         {
@@ -1198,7 +1195,7 @@ namespace {
         invariant( _savedRecoveryUnit == txn->recoveryUnit() );
         if ( needRestore || !wt_keeptxnopen() ) {
             // This will ensure an active session exists, so any restored cursors will bind to it
-            invariant(WiredTigerRecoveryUnit::get(txn)->getSession() == _cursor->getSession());
+            invariant(WiredTigerRecoveryUnit::get(txn)->getSession(txn) == _cursor->getSession());
 
             RecordId saved = _lastLoc;
             _locate(_lastLoc, false);
@@ -1207,7 +1204,12 @@ namespace {
                 _lastLoc = RecordId();
             }
             else if ( _loc != saved ) {
-                // old doc deleted, we're ok
+                if (_rs._isCapped) {
+                    // Doc was deleted either by cappedDeleteAsNeeded() or cappedTruncateAfter()
+                    _eof = true;
+                    return false;
+                }
+                // old doc deleted, bump ahead to the next record
             }
             else {
                 // we found where we left off!

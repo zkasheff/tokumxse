@@ -1,7 +1,7 @@
-// in_memory_recovery_unit.cpp
+// snapshot.h
 
 /**
-*    Copyright (C) 2014 MongoDB Inc.
+*    Copyright (C) 2015 MongoDB Inc.
 *
 *    This program is free software: you can redistribute it and/or  modify
 *    it under the terms of the GNU Affero General Public License, version 3,
@@ -28,38 +28,62 @@
 *    it in the license file.
 */
 
-#include "mongo/db/storage/in_memory/in_memory_recovery_unit.h"
+#pragma once
 
-#include "mongo/db/storage/sorted_data_interface.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
-    InMemoryRecoveryUnit::~InMemoryRecoveryUnit() {
-        invariant(_depth == 0);
-    }
 
-    void InMemoryRecoveryUnit::beginUnitOfWork(OperationContext* opCtx) {
-        _depth++;
-    }
-
-    void InMemoryRecoveryUnit::commitUnitOfWork() {
-        if ( _depth > 1 )
-            return;
-
-        for (Changes::iterator it = _changes.begin(), end = _changes.end(); it != end; ++it) {
-            (*it)->commit();
+    class SnapshotId {
+        static const uint64_t kNullId = 0;
+    public:
+        SnapshotId()
+            : _id(kNullId) {
         }
-        _changes.clear();
-    }
 
-    void InMemoryRecoveryUnit::endUnitOfWork() {
-         _depth--;
-         if (_depth > 0 )
-             return;
+        // 0 is NULL
+        explicit SnapshotId(uint64_t id)
+            : _id(id) {
+            invariant(id != kNullId);
+        }
 
-         for (Changes::reverse_iterator it = _changes.rbegin(), end = _changes.rend();
-                 it != end; ++it) {
-             (*it)->rollback();
-         }
-         _changes.clear();
-    }
+        bool isNull() const { return _id == kNullId; }
+
+        bool operator==(const SnapshotId& other) const {
+            return _id == other._id;
+        }
+
+        bool operator!=(const SnapshotId& other) const {
+            return _id != other._id;
+        }
+
+    private:
+        uint64_t _id;
+    };
+
+    template<typename T>
+    class Snapshotted {
+    public:
+        Snapshotted()
+            : _id(), _value() {
+        }
+
+        Snapshotted(SnapshotId id, const T& value ) :
+            _id(id), _value(value) {
+        }
+
+        void reset() {
+            *this = Snapshotted();
+        }
+
+        void setValue(const T& t) { _value = t; }
+
+        SnapshotId snapshotId() const { return _id; }
+        const T& value() const { return _value; }
+        T& value() { return _value; }
+
+    private:
+        SnapshotId _id;
+        T _value;
+    };
 }

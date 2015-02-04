@@ -189,7 +189,7 @@ namespace mongo {
 
         virtual ~HeapRecordStoreBtreeRecoveryUnit();
 
-        virtual void beginUnitOfWork();
+        virtual void beginUnitOfWork(OperationContext* opCtx);
         virtual void commitUnitOfWork();
         virtual void endUnitOfWork();
 
@@ -205,6 +205,8 @@ namespace mongo {
         virtual void* writingPtr(void* data, size_t len);
 
         virtual void setRollbackWritesDisabled() {}
+
+        virtual SnapshotId getSnapshotId() const { return SnapshotId(); }
 
         // -----------------------
 
