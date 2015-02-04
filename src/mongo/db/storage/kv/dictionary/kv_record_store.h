@@ -189,6 +189,7 @@ namespace mongo {
                                             long long dataSize);
 
         class KVRecordIterator : public RecordIterator {
+            const KVRecordStore &_rs;
             KVDictionary *_db;
             const CollectionScanParams::Direction _dir;
             RecordId _savedLoc;
@@ -207,7 +208,7 @@ namespace mongo {
             void _saveLocAndVal();
 
         public: 
-            KVRecordIterator(KVDictionary *db, OperationContext *txn,
+            KVRecordIterator(const KVRecordStore &rs, KVDictionary *db, OperationContext *txn,
                              const RecordId &start,
                              const CollectionScanParams::Direction &dir);
 
