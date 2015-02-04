@@ -111,7 +111,7 @@ namespace mongo {
         KVHeapRecoveryUnit() {}
         virtual ~KVHeapRecoveryUnit() {}
 
-        virtual void beginUnitOfWork() {}
+        virtual void beginUnitOfWork(OperationContext *opCtx) {}
 
         virtual void commitUnitOfWork();
 
@@ -142,6 +142,8 @@ namespace mongo {
             // not a doc-level locking engine
             invariant(false);
         }
+
+        virtual SnapshotId getSnapshotId() const { return SnapshotId(); }
 
         static KVHeapRecoveryUnit* getKVHeapRecoveryUnit(OperationContext* opCtx);
     };

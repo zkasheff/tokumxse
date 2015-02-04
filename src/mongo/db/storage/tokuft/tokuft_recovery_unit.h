@@ -49,7 +49,7 @@ namespace mongo {
 
         virtual ~TokuFTRecoveryUnit();
 
-        void beginUnitOfWork();
+        void beginUnitOfWork(OperationContext *opCtx);
 
         void commitUnitOfWork();
 
@@ -76,6 +76,8 @@ namespace mongo {
         }
 
         bool hasSnapshot() const;
+
+        SnapshotId getSnapshotId() const;
 
     private:
         typedef boost::shared_ptr<Change> ChangePtr;
