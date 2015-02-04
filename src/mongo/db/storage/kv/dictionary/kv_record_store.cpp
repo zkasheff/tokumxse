@@ -324,11 +324,10 @@ namespace mongo {
         return _db->update(txn, Slice::of(key), oldValue, message);
     }
 
-    RecordIterator* KVRecordStore::getIterator( OperationContext* txn,
-                                                const RecordId& start,
-                                                const CollectionScanParams::Direction& dir
-                                              ) const {
-        return new KVRecordIterator(_db.get(), txn, start, dir);
+    RecordIterator* KVRecordStore::getIterator(OperationContext* txn,
+                                               const RecordId& start,
+                                               const CollectionScanParams::Direction& dir) const {
+        return new KVRecordIterator(*this, _db.get(), txn, start, dir);
     }
 
     std::vector<RecordIterator *> KVRecordStore::getManyIterators( OperationContext* txn ) const {
@@ -451,10 +450,11 @@ namespace mongo {
         _cursor.reset(_db->getCursor(_txn, Slice::of(KeyString(id)), _dir));
     }
 
-    KVRecordStore::KVRecordIterator::KVRecordIterator(KVDictionary *db, OperationContext *txn,
+    KVRecordStore::KVRecordIterator::KVRecordIterator(const KVRecordStore &rs, KVDictionary *db, OperationContext *txn,
                                                       const RecordId &start,
                                                       const CollectionScanParams::Direction &dir)
-        : _db(db),
+        : _rs(rs),
+          _db(db),
           _dir(dir),
           _savedLoc(),
           _savedVal(),
@@ -546,7 +546,13 @@ namespace mongo {
         invariant(!_txn && !_cursor);
         _txn = txn;
         if (!_savedLoc.isNull()) {
+            RecordId saved = _savedLoc;
             _setCursor(_savedLoc);
+            if (curr() != saved && _rs.isCapped()) {
+                // Doc was deleted either by cappedDeleteAsNeeded() or cappedTruncateAfter()
+                _cursor.reset();
+                return false;
+            }
         } else {
             // We had saved state when the cursor was at EOF, so the savedLoc
             // was null - therefore we must restoreState to EOF as well. 
