@@ -53,7 +53,7 @@ namespace mongo {
         invariant(_changes.size() == 0);
     }
 
-    void TokuFTRecoveryUnit::beginUnitOfWork() {
+    void TokuFTRecoveryUnit::beginUnitOfWork(OperationContext *opCtx) {
         _depth++;
     }
 
@@ -144,6 +144,13 @@ namespace mongo {
 
     bool TokuFTRecoveryUnit::hasSnapshot() const {
         return _txn.txn() != NULL;
+    }
+
+    SnapshotId TokuFTRecoveryUnit::getSnapshotId() const {
+        if (!hasSnapshot()) {
+            return SnapshotId();
+        }
+        return SnapshotId(_txn.id());
     }
 
     bool TokuFTRecoveryUnit::_opCtxIsWriting(OperationContext *opCtx) {
