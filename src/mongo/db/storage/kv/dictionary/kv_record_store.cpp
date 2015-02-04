@@ -205,8 +205,7 @@ namespace mongo {
     RecordData KVRecordStore::dataFor( OperationContext* txn, const RecordId& loc) const {
         RecordData rd;
         bool found = findRecord(txn, loc, &rd);
-        // This method is called when we know there must be an associated record for `loc'
-        invariant(found);
+        massert(28613, "Didn't find RecordId in record store", found);
         return rd;
     }
 
