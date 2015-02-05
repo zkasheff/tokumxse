@@ -45,12 +45,12 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/oplog_hack.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_global_options.h"
+#include "mongo/db/storage/wiredtiger/wiredtiger_kv_engine.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_recovery_unit.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_session_cache.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_size_storer.h"
 #include "mongo/db/storage/wiredtiger/wiredtiger_util.h"
 #include "mongo/util/assert_util.h"
-#include "mongo/util/background.h"
 #include "mongo/util/fail_point.h"
 #include "mongo/util/log.h"
 #include "mongo/util/mongoutils/str.h"
@@ -245,21 +245,13 @@ namespace {
 
         }
 
-        _backgroundThread.reset(_startBackgroundThread());
-        if (_backgroundThread) {
-            _backgroundThread->go();
-        }
+        _hasBackgroundThread = WiredTigerKVEngine::initRsOplogBackgroundThread(ns);
     }
 
     WiredTigerRecordStore::~WiredTigerRecordStore() {
         {
             boost::timed_mutex::scoped_lock lk(_cappedDeleterMutex);
             _shuttingDown = true;
-        }
-
-        if (_backgroundThread) {
-            // Need time to wake from sleep,a nd possible delete 1000 docs.
-            invariant(_backgroundThread->wait(10000));
         }
 
         LOG(1) << "~WiredTigerRecordStore for: " << ns();
@@ -406,7 +398,7 @@ namespace {
         if (_cappedMaxDocs != -1) {
             lock.lock(); // Max docs has to be exact, so have to check every time.
         }
-        else if(_backgroundThread) {
+        else if(_hasBackgroundThread) {
             // We are foreground, and there is a background thread,
 
             // Check if we need some back pressure.
@@ -1212,7 +1204,16 @@ namespace {
                 _lastLoc = RecordId();
             }
             else if ( _loc != saved ) {
-                // old doc deleted, we're ok
+                if (_rs._isCapped && _lastLoc != RecordId()) {
+                    // Doc was deleted either by cappedDeleteAsNeeded() or cappedTruncateAfter().
+                    // It is important that we error out in this case so that consumers don't
+                    // silently get 'holes' when scanning capped collections. We don't make 
+                    // this guarantee for normal collections so it is ok to skip ahead in that case.
+                    _eof = true;
+                    return false;
+                }
+                // lastLoc was either deleted or never set (yielded before first call to getNext()),
+                // so bump ahead to the next record.
             }
             else {
                 // we found where we left off!
