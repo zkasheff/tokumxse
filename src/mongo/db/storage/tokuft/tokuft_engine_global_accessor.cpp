@@ -45,7 +45,7 @@ namespace mongo {
 
     TokuFTEngine* tokuftGlobalEngine() {
         StorageEngine* storageEngine = getGlobalEnvironment()->getGlobalStorageEngine();
-        massert(28606, "no storage engine available", storageEngine);
+        massert(28616, "no storage engine available", storageEngine);
         KVStorageEngine* kvStorageEngine = checked_cast<KVStorageEngine*>(storageEngine);
         KVEngine* kvEngine = kvStorageEngine->getEngine();
         invariant(kvEngine);
