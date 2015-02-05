@@ -16,7 +16,7 @@ Import("wiredtiger")
 
 # Boost we need everywhere. 's2' is spammed in all over the place by
 # db/geo unfortunately. pcre is also used many places.
-env.InjectThirdPartyIncludePaths(libraries=['boost', 's2', 'pcre'])
+env.InjectThirdPartyIncludePaths(libraries=['boost', 's2', 'pcre', 'tokuft'])
 env.InjectMongoIncludePaths()
 
 env.SConscript(['base/SConscript',
@@ -38,8 +38,11 @@ env.SConscript(['base/SConscript',
                 'db/storage/devnull/SConscript',
                 'db/storage/in_memory/SConscript',
                 'db/storage/kv/SConscript',
+                'db/storage/kv/dictionary/SConscript',
+                'db/storage/kv_heap/SConscript',
                 'db/storage/mmap_v1/SConscript',
                 'db/storage/rocks/SConscript',
+                'db/storage/tokuft/SConscript',
                 'db/storage/wiredtiger/SConscript',
                 'db/SConscript',
                 'installer/msi/SConscript',
@@ -965,6 +968,7 @@ serveronlyLibdeps = ["coreshard",
                      'db/startup_warnings_mongod',
                      'db/storage/devnull/storage_devnull',
                      'db/storage/in_memory/storage_in_memory',
+                     'db/storage/kv_heap/storage_kv_heap',
                      'db/storage/mmap_v1/storage_mmapv1',
                      'db/storage/storage_engine_lock_file',
                      'db/storage/storage_engine_metadata',
@@ -974,6 +978,9 @@ serveronlyLibdeps = ["coreshard",
 
 if has_option("rocksdb" ):
     serveronlyLibdeps.append( 'db/storage/rocks/storage_rocks' )
+
+if has_option("tokuft"):
+    serveronlyLibdeps.append( 'db/storage/tokuft/storage_tokuft' )
 
 if wiredtiger:
     serveronlyLibdeps.append( 'db/storage/wiredtiger/storage_wiredtiger' )

@@ -212,14 +212,15 @@ namespace {
     std::string KVCatalog::getIndexIdent( OperationContext* opCtx,
                                           const StringData& ns,
                                           const StringData& idxName ) const {
-        BSONObj obj = _findEntry( opCtx, ns );
+        BSONObj obj = _findEntry( opCtx, ns, NULL, true );
         BSONObj idxIdent = obj["idxIdent"].Obj();
         return idxIdent[idxName].String();
     }
 
     BSONObj KVCatalog::_findEntry( OperationContext* opCtx,
                                    const StringData& ns,
-                                   RecordId* out ) const {
+                                   RecordId* out,
+                                   bool skipPessimisticLocking ) const {
 
         boost::scoped_ptr<Lock::ResourceLock> rLk;
         if (!_isRsThreadSafe && opCtx->lockState()) {
@@ -236,9 +237,9 @@ namespace {
             dl = it->second.storedLoc;
         }
 
-        LOG(1) << "looking up metadata for: " << ns << " @ " << dl;
+        LOG(3) << "looking up metadata for: " << ns << " @ " << dl;
         RecordData data;
-        if ( !_rs->findRecord( opCtx, dl, &data ) ) {
+        if ( !_rs->findRecord( opCtx, dl, &data, skipPessimisticLocking ) ) {
             // since the in memory meta data isn't managed with mvcc
             // its possible for different transactions to see slightly
             // different things, which is ok via the locking above.
@@ -253,7 +254,7 @@ namespace {
 
     const BSONCollectionCatalogEntry::MetaData KVCatalog::getMetaData( OperationContext* opCtx,
                                                                        const StringData& ns ) {
-        BSONObj obj = _findEntry( opCtx, ns );
+        BSONObj obj = _findEntry( opCtx, ns, NULL, true );
         LOG(3) << " fetched CCE metadata: " << obj;
         BSONCollectionCatalogEntry::MetaData md;
         const BSONElement mdElement = obj["md"];
@@ -276,7 +277,7 @@ namespace {
         }
 
         RecordId loc;
-        BSONObj obj = _findEntry( opCtx, ns, &loc );
+        BSONObj obj = _findEntry( opCtx, ns, &loc, false );
 
         {
             // rebuilt doc
@@ -330,7 +331,7 @@ namespace {
         }
 
         RecordId loc;
-        BSONObj old = _findEntry( opCtx, fromNS, &loc ).getOwned();
+        BSONObj old = _findEntry( opCtx, fromNS, &loc, false ).getOwned();
         {
             BSONObjBuilder b;
 

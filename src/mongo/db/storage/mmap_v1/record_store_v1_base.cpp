@@ -161,7 +161,7 @@ namespace mongo {
     }
 
     bool RecordStoreV1Base::findRecord( OperationContext* txn,
-                                        const RecordId& loc, RecordData* rd ) const {
+                                        const RecordId& loc, RecordData* rd, bool skipPessimisticLocking ) const {
         // this is a bit odd, as the semantics of using the storage engine imply it _has_ to be.
         // And in fact we can't actually check.
         // So we assume the best.

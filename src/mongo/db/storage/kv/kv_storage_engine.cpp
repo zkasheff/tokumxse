@@ -32,6 +32,7 @@
 
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 
+#include "mongo/db/storage/kv/kv_close_all_databases.h"
 #include "mongo/db/operation_context_noop.h"
 #include "mongo/db/storage/kv/kv_database_catalog_entry.h"
 #include "mongo/db/storage/kv/kv_engine.h"
@@ -168,6 +169,7 @@ namespace mongo {
     }
 
     void KVStorageEngine::cleanShutdown() {
+        closeAllDatabasesWrapper();
 
         for ( DBMap::const_iterator it = _dbs.begin(); it != _dbs.end(); ++it ) {
             delete it->second;

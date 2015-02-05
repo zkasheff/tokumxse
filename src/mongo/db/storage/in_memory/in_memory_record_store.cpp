@@ -168,7 +168,7 @@ namespace mongo {
     }
 
     bool InMemoryRecordStore::findRecord( OperationContext* txn,
-                                          const RecordId& loc, RecordData* rd ) const {
+                                          const RecordId& loc, RecordData* rd, bool skipPessimisticLocking ) const {
         Records::const_iterator it = _data->records.find(loc);
         if ( it == _data->records.end() ) {
             return false;

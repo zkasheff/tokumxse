@@ -342,7 +342,7 @@ namespace {
     }
 
     bool WiredTigerRecordStore::findRecord( OperationContext* txn,
-                                            const RecordId& loc, RecordData* out ) const {
+                                            const RecordId& loc, RecordData* out, bool skipPessimisticLocking ) const {
         WiredTigerCursor curwrap( _uri, _instanceId, true, txn);
         WT_CURSOR *c = curwrap.get();
         invariant( c );

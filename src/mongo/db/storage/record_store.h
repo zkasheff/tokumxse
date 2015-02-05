@@ -158,7 +158,8 @@ namespace mongo {
          */
         virtual bool findRecord( OperationContext* txn,
                                  const RecordId& loc,
-                                 RecordData* out ) const = 0;
+                                 RecordData* out,
+                                 bool skipPessimisticLocking=false ) const = 0;
 
         virtual void deleteRecord( OperationContext* txn, const RecordId& dl ) = 0;
 

@@ -1,3 +1,7 @@
+if (TestData.storageEngine == "tokuft") {
+    print("Skipping due to MSE-42");
+} else {
+
 // Attempt to build 63 indexes simultaneously
 
 Random.setRandomSeed();
@@ -129,3 +133,5 @@ for (var i in specs) {
 }
 
 print("SUCCESS!");
+
+}

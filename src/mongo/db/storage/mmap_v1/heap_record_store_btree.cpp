@@ -49,7 +49,7 @@ namespace mongo {
     }
 
     bool HeapRecordStoreBtree::findRecord(OperationContext* txn,
-                                          const RecordId& loc, RecordData* out) const {
+                                          const RecordId& loc, RecordData* out, bool skipPessimisticLocking) const {
         Records::const_iterator it = _records.find(loc);
         if ( it == _records.end() )
             return false;

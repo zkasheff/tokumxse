@@ -50,6 +50,9 @@ if not use_system_version_of_library('yaml'):
     thirdPartyIncludePathList.append(
         ('yaml', '#/src/third_party/yaml-cpp-0.5.1/include'))
 
+thirdPartyIncludePathList.append(
+    ('tokuft', '#/src/third_party/tokuft/include'))
+
 def injectAllThirdPartyIncludePaths(thisEnv):
     thisEnv.AppendUnique(CPPPATH=[entry[1] for entry in thirdPartyIncludePathList])
 
@@ -205,6 +208,9 @@ if (GetOption("allocator") == "tcmalloc"):
             LIBDEPS=[
                 'gperftools-2.2/tcmalloc_minimal',
             ])
+elif (GetOption("allocator") == "jemalloc"):
+    gperftoolsEnv = env.Clone()
+    gperftoolsEnv.Append(SYSLIBDEPS=['jemalloc_pic'])
 
 gperftoolsEnv.Library(
     target="shim_allocator",
