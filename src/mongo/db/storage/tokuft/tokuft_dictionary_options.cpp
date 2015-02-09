@@ -70,7 +70,7 @@ namespace mongo {
         tokuftOptions.addOptionChaining(optionName("readPageSize"),
                 shortOptionName("readPageSize"), moe::UnsignedLongLong, str::stream() << "TokuFT " << _objectName << " read page size");
         tokuftOptions.addOptionChaining(optionName("compression"),
-                shortOptionName("compression"), moe::String, str::stream() << "TokuFT " << _objectName << " compression method (uncompressed, zlib, lzma, or quicklz)");
+                shortOptionName("compression"), moe::String, str::stream() << "TokuFT " << _objectName << " compression method (none, zlib, lzma, or quicklz)");
         tokuftOptions.addOptionChaining(optionName("fanout"),
                 shortOptionName("fanout"), moe::Int, str::stream() << "TokuFT " << _objectName << " fanout");
 
