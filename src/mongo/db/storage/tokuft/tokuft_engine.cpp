@@ -340,7 +340,7 @@ namespace mongo {
     }
 
     Status TokuFTEngine::createKVDictionary(OperationContext* opCtx,
-                                            const StringData& ident,
+                                            StringData ident,
                                             const KVDictionary::Encoding &enc,
                                             const BSONObj& options) {
         WriteUnitOfWork wuow(opCtx);
@@ -352,7 +352,7 @@ namespace mongo {
     }
 
     KVDictionary* TokuFTEngine::getKVDictionary(OperationContext* opCtx,
-                                                const StringData& ident,
+                                                StringData ident,
                                                 const KVDictionary::Encoding &enc,
                                                 const BSONObj& options,
                                                 bool mayCreate) {
@@ -361,7 +361,7 @@ namespace mongo {
     }
 
     Status TokuFTEngine::dropKVDictionary(OperationContext* opCtx,
-                                          const StringData& ident) {
+                                          StringData ident) {
         invariant(ident.size() > 0);
 
         std::string identStr = ident.toString();
@@ -382,7 +382,7 @@ namespace mongo {
         return 1;
     }
 
-    bool TokuFTEngine::hasIdent(OperationContext* opCtx, const StringData& ident) const {
+    bool TokuFTEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
         ftcxx::Slice key(ident.size() + 1);
         std::copy(ident.begin(), ident.end(), key.mutable_data());
         key.mutable_data()[ident.size()] = '\0';

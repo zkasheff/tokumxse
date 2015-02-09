@@ -49,15 +49,15 @@ namespace mongo {
         KVSizeStorer(KVDictionary *metadataDict, RecoveryUnit *ru);
         ~KVSizeStorer();
 
-        void onCreate(RecordStore *rs, const StringData &ident,
+        void onCreate(RecordStore *rs, StringData ident,
                       long long nr, long long ds);
-        void onDestroy(const StringData &ident,
+        void onDestroy(StringData ident,
                        long long nr, long long ds);
 
-        void store(RecordStore *rs, const StringData& ident,
+        void store(RecordStore *rs, StringData ident,
                    long long numRecords, long long dataSize);
 
-        void load(const StringData& ident,
+        void load(StringData ident,
                   long long* numRecords, long long* dataSize) const;
 
         void loadFromDict(OperationContext *opCtx);

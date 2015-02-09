@@ -57,7 +57,7 @@
 
 namespace mongo {
 
-    TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
+    TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, StringData ident,
                                        const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options)
         : _options(options),
           _db(ftcxx::DBBuilder()

@@ -102,18 +102,18 @@ namespace mongo {
         invariant( _magic == MAGIC );
     }
 
-    void KVSizeStorer::onCreate(RecordStore *rs, const StringData &ident,
+    void KVSizeStorer::onCreate(RecordStore *rs, StringData ident,
                                 long long numRecords, long long dataSize) {
         store(rs, ident, numRecords, dataSize);
     }
 
-    void KVSizeStorer::onDestroy(const StringData &ident,
+    void KVSizeStorer::onDestroy(StringData ident,
                                  long long numRecords, long long dataSize) {
         store(NULL, ident, numRecords, dataSize);
     }
 
 
-    void KVSizeStorer::store(RecordStore *rs, const StringData& ident,
+    void KVSizeStorer::store(RecordStore *rs, StringData ident,
                              long long numRecords, long long dataSize) {
         _checkMagic();
         boost::mutex::scoped_lock lk( _entriesMutex );
@@ -124,7 +124,7 @@ namespace mongo {
         entry.rs = rs;
     }
 
-    void KVSizeStorer::load(const StringData& ident,
+    void KVSizeStorer::load(StringData ident,
                             long long* numRecords, long long* dataSize) const {
         _checkMagic();
         boost::mutex::scoped_lock lk( _entriesMutex );

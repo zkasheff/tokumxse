@@ -60,8 +60,8 @@ namespace mongo {
      *              and never again.
      */
     Status KVEngineImpl::createRecordStore( OperationContext* opCtx,
-                                            const StringData& ns,
-                                            const StringData& ident,
+                                            StringData ns,
+                                            StringData ident,
                                             const CollectionOptions& options ) {
         // Creating a record store is as simple as creating one with the given `ident'
         return createKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
@@ -74,8 +74,8 @@ namespace mongo {
      * Calling on a non-created ident is invalid and may crash.
      */
     RecordStore* KVEngineImpl::getRecordStore( OperationContext* opCtx,
-                                               const StringData& ns,
-                                               const StringData& ident,
+                                               StringData ns,
+                                               StringData ident,
                                                const CollectionOptions& options ) {
         std::auto_ptr<KVDictionary> db(getKVDictionary(opCtx, ident, KVDictionary::Encoding::forRecordStore(),
                                                   options.storageEngine));
@@ -93,14 +93,14 @@ namespace mongo {
     }
 
     Status KVEngineImpl::dropIdent( OperationContext* opCtx,
-                                    const StringData& ident ) {
+                                    StringData ident ) {
         return dropKVDictionary(opCtx, ident);
     }
 
     // --------
 
     Status KVEngineImpl::createSortedDataInterface(OperationContext* opCtx,
-                                                   const StringData& ident,
+                                                   StringData ident,
                                                    const IndexDescriptor* desc) {
         // Creating a sorted data impl is as simple as creating one with the given `ident'
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
@@ -111,7 +111,7 @@ namespace mongo {
     }
 
     SortedDataInterface* KVEngineImpl::getSortedDataInterface(OperationContext* opCtx,
-                                                              const StringData& ident,
+                                                              StringData ident,
                                                               const IndexDescriptor* desc) {
         const BSONObj keyPattern = desc ? desc->keyPattern() : BSONObj();
         const BSONObj options = desc ? desc->infoObj().getObjectField("storageEngine") : BSONObj();
@@ -121,9 +121,9 @@ namespace mongo {
     }
 
     Status KVEngineImpl::okToRename( OperationContext* opCtx,
-                                     const StringData& fromNS,
-                                     const StringData& toNS,
-                                     const StringData& ident,
+                                     StringData fromNS,
+                                     StringData toNS,
+                                     StringData ident,
                                      const RecordStore* originalRecordStore ) const {
         if (_sizeStorer) {
             _sizeStorer->store(NULL, ident,

@@ -119,7 +119,7 @@ namespace mongo {
                 return v;
             }
 
-            void append(BSONObjBuilder& builder, const StringData& name, int scale = 1) const {
+            void append(BSONObjBuilder& builder, StringData name, int scale = 1) const {
                 if (_type == FilesystemState) {
                     BSONObjBuilder fsBuilder(builder.subobjStart(name));
                     if (_fsState == FS_GREEN) {
@@ -220,7 +220,7 @@ namespace mongo {
             operator BSONObjBuilder&() { return b(); }
         };
 
-        NestedBuilder(Stack &stack, const StringData &name)
+        NestedBuilder(Stack &stack, StringData name)
             : _stack(stack), _b(_stack.b().subobjStart(name))
         {
             _stack.push(&_b);

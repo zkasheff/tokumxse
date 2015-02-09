@@ -57,9 +57,9 @@ namespace mongo {
 
         virtual bool isLocked() const { return true; }
         virtual bool isWriteLocked() const { return true; }
-        virtual bool isWriteLocked(const StringData& ns) const { return true; }
+        virtual bool isWriteLocked(StringData ns) const { return true; }
 
-        virtual void assertWriteLocked(const StringData& ns) const {}
+        virtual void assertWriteLocked(StringData ns) const {}
     };
 
     class OperationContextShutdown : public OperationContext {
@@ -109,7 +109,7 @@ namespace mongo {
             return Status::OK();
         }
 
-        virtual bool isPrimaryFor( const StringData& ns ) {
+        virtual bool isPrimaryFor(StringData ns) {
             return true;
         }
 

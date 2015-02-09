@@ -48,26 +48,26 @@ namespace mongo {
         RecoveryUnit* newRecoveryUnit();
 
         Status createKVDictionary(OperationContext* opCtx,
-                                  const StringData& ident,
+                                  StringData ident,
                                   const KVDictionary::Encoding &enc,
                                   const BSONObj& options);
 
         KVDictionary* getKVDictionary(OperationContext* opCtx,
-                                      const StringData& ident,
+                                      StringData ident,
                                       const KVDictionary::Encoding &enc,
                                       const BSONObj& options,
                                       bool mayCreate = false);
 
-        Status dropKVDictionary( OperationContext* opCtx,
-                                  const StringData& ident );
+        Status dropKVDictionary(OperationContext* opCtx,
+                                StringData ident);
 
-        int64_t getIdentSize( OperationContext* opCtx,
-                              const StringData& ident ) {
+        int64_t getIdentSize(OperationContext* opCtx,
+                             StringData ident) {
             return 1;
         }
 
-        Status repairIdent( OperationContext* opCtx,
-                            const StringData& ident ) {
+        Status repairIdent(OperationContext* opCtx,
+                           StringData ident) {
             return Status::OK();
         }
 
@@ -81,7 +81,7 @@ namespace mongo {
         // why not
         bool supportsDirectoryPerDB() const { return true; }
 
-        bool hasIdent(OperationContext* opCtx, const StringData& ident) const;
+        bool hasIdent(OperationContext* opCtx, StringData ident) const;
 
         std::vector<std::string> getAllIdents( OperationContext* opCtx ) const;
 

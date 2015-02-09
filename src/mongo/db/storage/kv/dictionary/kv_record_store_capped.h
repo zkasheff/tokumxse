@@ -47,8 +47,8 @@ namespace mongo {
         // KVRecordStore takes ownership of db
         KVRecordStoreCapped( KVDictionary *db,
                              OperationContext* opCtx,
-                             const StringData& ns,
-                             const StringData& ident,
+                             StringData ns,
+                             StringData ident,
                              const CollectionOptions& options,
                              KVSizeStorer *sizeStorer,
                              bool engineSupportsDocLocking);

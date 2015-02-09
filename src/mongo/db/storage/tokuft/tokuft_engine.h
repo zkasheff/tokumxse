@@ -50,26 +50,26 @@ namespace mongo {
         virtual RecoveryUnit* newRecoveryUnit();
 
         virtual Status createKVDictionary(OperationContext* opCtx,
-                                          const StringData& ident,
+                                          StringData ident,
                                           const KVDictionary::Encoding &enc,
                                           const BSONObj& options);
 
         virtual KVDictionary* getKVDictionary(OperationContext* opCtx,
-                                              const StringData& ident,
+                                              StringData ident,
                                               const KVDictionary::Encoding &enc,
                                               const BSONObj& options,
                                               bool mayCreate = false);
 
         virtual Status dropKVDictionary(OperationContext* opCtx,
-                                        const StringData& ident);
+                                        StringData ident);
 
         virtual int64_t getIdentSize(OperationContext* opCtx,
-                                     const StringData& ident) {
+                                     StringData ident) {
             return 1;
         }
 
         virtual Status repairIdent(OperationContext* opCtx,
-                                   const StringData& ident) {
+                                   StringData ident) {
             return Status::OK();
         }
 
@@ -94,7 +94,7 @@ namespace mongo {
 
         void cleanShutdownImpl();
 
-        bool hasIdent(OperationContext* opCtx, const StringData& ident) const;
+        bool hasIdent(OperationContext* opCtx, StringData ident) const;
 
         std::vector<std::string> getAllIdents(OperationContext *opCtx) const;
 

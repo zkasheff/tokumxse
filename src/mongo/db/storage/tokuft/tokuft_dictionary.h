@@ -69,7 +69,7 @@ namespace mongo {
     // and SortedDataInterface implementations in src/mongo/db/storage/kv.
     class TokuFTDictionary : public KVDictionary {
     public:
-        TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, const StringData &ident,
+        TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, StringData ident,
                          const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options);
 
         class Encoding : public KVDictionary::Encoding {

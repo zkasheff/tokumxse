@@ -59,8 +59,8 @@ namespace mongo {
 
     KVRecordStore::KVRecordStore( KVDictionary *db,
                                   OperationContext* opCtx,
-                                  const StringData& ns,
-                                  const StringData& ident,
+                                  StringData ns,
+                                  StringData ident,
                                   const CollectionOptions& options,
                                   KVSizeStorer *sizeStorer )
         : RecordStore(ns),

@@ -39,14 +39,14 @@ namespace mongo {
     }
 
     Status KVHeapEngine::createKVDictionary(OperationContext* opCtx,
-                                            const StringData& ident,
+                                            StringData ident,
                                             const KVDictionary::Encoding &enc,
                                             const BSONObj& options) {
         return Status::OK();
     }
 
     KVDictionary* KVHeapEngine::getKVDictionary(OperationContext* opCtx,
-                                                const StringData& ident,
+                                                StringData ident,
                                                 const KVDictionary::Encoding &enc,
                                                 const BSONObj& options,
                                                 bool mayCreate) {
@@ -60,14 +60,14 @@ namespace mongo {
         return ptr.release();
     }
 
-    Status KVHeapEngine::dropKVDictionary( OperationContext* opCtx,
-                                            const StringData& ident ) {
+    Status KVHeapEngine::dropKVDictionary(OperationContext* opCtx,
+                                          StringData ident) {
         boost::mutex::scoped_lock lk(_mapMutex);
         _map.erase(ident);
         return Status::OK();
     }
 
-    bool KVHeapEngine::hasIdent(OperationContext* opCtx, const StringData& ident) const {
+    bool KVHeapEngine::hasIdent(OperationContext* opCtx, StringData ident) const {
         boost::mutex::scoped_lock lk(_mapMutex);
         return _map.find(ident) != _map.end();
     }

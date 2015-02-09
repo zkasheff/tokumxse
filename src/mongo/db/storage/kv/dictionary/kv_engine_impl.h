@@ -64,8 +64,8 @@ namespace mongo {
          *              and never again.
          */
         Status createRecordStore( OperationContext* opCtx,
-                                  const StringData& ns,
-                                  const StringData& ident,
+                                  StringData ns,
+                                  StringData ident,
                                   const CollectionOptions& options );
 
         /**
@@ -74,27 +74,27 @@ namespace mongo {
          * Calling on a non-created ident is invalid and may crash.
          */
         RecordStore* getRecordStore( OperationContext* opCtx,
-                                     const StringData& ns,
-                                     const StringData& ident,
+                                     StringData ns,
+                                     StringData ident,
                                      const CollectionOptions& options );
 
         // --------
 
         Status createSortedDataInterface( OperationContext* opCtx,
-                                          const StringData& ident,
+                                          StringData ident,
                                           const IndexDescriptor* desc );
 
         SortedDataInterface* getSortedDataInterface( OperationContext* opCtx,
-                                                     const StringData& ident,
+                                                     StringData ident,
                                                      const IndexDescriptor* desc );
 
         Status dropIdent( OperationContext* opCtx,
-                          const StringData& ident );
+                          StringData ident );
 
         Status okToRename( OperationContext* opCtx,
-                           const StringData& fromNS,
-                           const StringData& toNS,
-                           const StringData& ident,
+                           StringData fromNS,
+                           StringData toNS,
+                           StringData ident,
                            const RecordStore* originalRecordStore ) const;
 
         void cleanShutdown();
@@ -104,7 +104,7 @@ namespace mongo {
         // 
         // param: enc, the encoding that should be passed to the KVDictionary
         virtual Status createKVDictionary(OperationContext* opCtx,
-                                          const StringData& ident,
+                                          StringData ident,
                                           const KVDictionary::Encoding &enc,
                                           const BSONObj& options) = 0;
 
@@ -112,14 +112,14 @@ namespace mongo {
         //
         // param: enc, the encoding that should be passed to the KVDictionary
         virtual KVDictionary* getKVDictionary(OperationContext* opCtx,
-                                              const StringData& ident,
+                                              StringData ident,
                                               const KVDictionary::Encoding &enc,
                                               const BSONObj& options,
                                               bool mayCreate = false) = 0;
 
         // Drop a KVDictionary (same rules as dropRecordStore / dropSortedDataInterface)
-        virtual Status dropKVDictionary( OperationContext* opCtx,
-                                         const StringData& ident ) = 0;
+        virtual Status dropKVDictionary(OperationContext* opCtx,
+                                        StringData ident) = 0;
 
         /**
          * If true, a record store built with this engine will store its stats (numRecords and
