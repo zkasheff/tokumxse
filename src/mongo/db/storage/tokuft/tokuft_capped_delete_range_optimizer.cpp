@@ -77,14 +77,16 @@ namespace mongo {
     namespace {
 
         class CappedDeleteRangeOptimizeCallback {
+            const TokuFTCappedDeleteRangeOptimizer &_optimizer;
             Timer _timer;
             int _lastWarnedAboutTime;
             static const size_t kLoopsWarningLimit = 100;
             size_t _loops;
 
         public:
-            CappedDeleteRangeOptimizeCallback()
-                : _lastWarnedAboutTime(0),
+            CappedDeleteRangeOptimizeCallback(const TokuFTCappedDeleteRangeOptimizer &optimizer)
+                : _optimizer(optimizer),
+                  _lastWarnedAboutTime(0),
                   _loops(0)
             {}
 
@@ -96,6 +98,10 @@ namespace mongo {
             }
 
             int operator()(float progress, size_t loops) {
+                if (!_optimizer.running()) {
+                    return -1;
+                }
+
                 _loops = loops;
                 int secs = _timer.seconds();
                 if (secs > _lastWarnedAboutTime) {
@@ -139,6 +145,10 @@ namespace mongo {
 
             const int r = _db.hot_optimize(slice2ftslice(Slice::of(kNegativeInfinity)), slice2ftslice(Slice::of(KeyString(max))),
                                            CappedDeleteRangeOptimizeCallback());
+            if (r == -1 && !running()) {
+                break;
+            }
+
             Status s = statusFromTokuFTError(r);
             if (!s.isOK()) {
                 log() << "TokuFT: Capped deleter got error from hot optimize operation " << s;
@@ -150,6 +160,11 @@ namespace mongo {
             _terminated = true;
             _updateCond.notify_one();
         }
+    }
+
+    bool running() const {
+        boost::mutex::scoped_lock lk(_mutex);
+        return _running;
     }
 
     void TokuFTCappedDeleteRangeOptimizer::updateMaxDeleted(const RecordId &max, int64_t sizeSaved, int64_t docsRemoved) {

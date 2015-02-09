@@ -68,6 +68,8 @@ namespace mongo {
 
         void run();
 
+        bool running() const;
+
     private:
         static const KeyString kNegativeInfinity;
         int _magic;
@@ -85,7 +87,7 @@ namespace mongo {
 
         boost::thread _thread;
 
-        boost::mutex _mutex;
+        mutable boost::mutex _mutex;
         boost::condition_variable _updateCond;
         boost::condition_variable _backpressureCond;
     };
