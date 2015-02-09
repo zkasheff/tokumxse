@@ -144,7 +144,7 @@ namespace mongo {
             }
 
             const int r = _db.hot_optimize(slice2ftslice(Slice::of(kNegativeInfinity)), slice2ftslice(Slice::of(KeyString(max))),
-                                           CappedDeleteRangeOptimizeCallback());
+                                           CappedDeleteRangeOptimizeCallback(*this));
             if (r == -1 && !running()) {
                 break;
             }
@@ -162,7 +162,7 @@ namespace mongo {
         }
     }
 
-    bool running() const {
+    bool TokuFTCappedDeleteRangeOptimizer::running() const {
         boost::mutex::scoped_lock lk(_mutex);
         return _running;
     }
