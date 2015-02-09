@@ -112,34 +112,23 @@ namespace mongo {
             }
 
             bool ok = false;
-            int attempt = 0;
-            while ( 1 ) {
-                try {
-                    errmsg = "";
+            MONGO_WRITE_CONFLICT_RETRY_LOOP_BEGIN {
+                errmsg = "";
 
-                    // We can always retry because we only ever modify one document
-                    ok = runImpl(txn,
-                                 dbname,
-                                 ns,
-                                 query,
-                                 fields,
-                                 update,
-                                 sort,
-                                 upsert,
-                                 returnNew,
-                                 remove,
-                                 result,
-                                 errmsg);
-                    break;
-                }
-                catch (const WriteConflictException&) {
-                    txn->getCurOp()->debug().writeConflicts++;
-                    if ( attempt++ > 1 ) {
-                        log() << "got WriteConflictException on findAndModify for " << ns
-                              <<  " retrying attempt: " << attempt;
-                    }
-                }
-            }
+                // We can always retry because we only ever modify one document
+                ok = runImpl(txn,
+                             dbname,
+                             ns,
+                             query,
+                             fields,
+                             update,
+                             sort,
+                             upsert,
+                             returnNew,
+                             remove,
+                             result,
+                             errmsg);
+            } MONGO_WRITE_CONFLICT_RETRY_LOOP_END(txn, "findAndModify", ns);
 
             if ( !ok && errmsg == "no-collection" ) {
                 // Take X lock so we can create collection, then re-run operation.
