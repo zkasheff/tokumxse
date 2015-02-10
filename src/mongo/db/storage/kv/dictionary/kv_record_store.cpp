@@ -321,7 +321,21 @@ namespace mongo {
         // updateWithDamages can't change the number or size of records, so we don't need to update
         // stats.
 
-        return _db->update(txn, Slice::of(key), oldValue, message);
+        const Status s = _db->update(txn, Slice::of(key), oldValue, message);
+        if (!s.isOK()) {
+            return s;
+        }
+
+        // We also need to reach in and screw with the old doc's data so that the update system gets
+        // the new image, because the update system is assuming mmapv1's behavior.  Sigh.
+        for (mutablebson::DamageVector::const_iterator it = damages.begin(); it != damages.end(); it++) {
+            const mutablebson::DamageEvent &event = *it;
+            invariant(event.targetOffset + event.size < static_cast<uint32_t>(oldRec.size()));
+            std::copy(damageSource + event.sourceOffset, damageSource + event.sourceOffset + event.size,
+                      /* eek */
+                      const_cast<char *>(oldRec.data()) + event.targetOffset);
+        }
+        return s;
     }
 
     RecordIterator* KVRecordStore::getIterator(OperationContext* txn,
