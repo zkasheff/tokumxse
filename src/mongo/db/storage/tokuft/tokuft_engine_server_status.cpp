@@ -163,7 +163,7 @@ namespace mongo {
             }
 
             uint64_t getInteger() const {
-                massert(28607, "TokuFT: wrong engine status type for getInteger", _type == UInt64);
+                massert(28617, "TokuFT: wrong engine status type for getInteger", _type == UInt64);
                 return _uint64;
             }
 
