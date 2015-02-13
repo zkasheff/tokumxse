@@ -49,11 +49,13 @@ namespace mongo {
 
         Status createKVDictionary(OperationContext* opCtx,
                                   StringData ident,
+                                  StringData ns,
                                   const KVDictionary::Encoding &enc,
                                   const BSONObj& options);
 
         KVDictionary* getKVDictionary(OperationContext* opCtx,
                                       StringData ident,
+                                      StringData ns,
                                       const KVDictionary::Encoding &enc,
                                       const BSONObj& options,
                                       bool mayCreate = false);

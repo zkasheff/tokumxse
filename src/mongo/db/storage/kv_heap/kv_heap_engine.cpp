@@ -40,6 +40,7 @@ namespace mongo {
 
     Status KVHeapEngine::createKVDictionary(OperationContext* opCtx,
                                             StringData ident,
+                                            StringData ns,
                                             const KVDictionary::Encoding &enc,
                                             const BSONObj& options) {
         return Status::OK();
@@ -47,6 +48,7 @@ namespace mongo {
 
     KVDictionary* KVHeapEngine::getKVDictionary(OperationContext* opCtx,
                                                 StringData ident,
+                                                StringData ns,
                                                 const KVDictionary::Encoding &enc,
                                                 const BSONObj& options,
                                                 bool mayCreate) {

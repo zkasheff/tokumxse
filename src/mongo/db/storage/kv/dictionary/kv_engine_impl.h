@@ -105,6 +105,7 @@ namespace mongo {
         // param: enc, the encoding that should be passed to the KVDictionary
         virtual Status createKVDictionary(OperationContext* opCtx,
                                           StringData ident,
+                                          StringData ns,
                                           const KVDictionary::Encoding &enc,
                                           const BSONObj& options) = 0;
 
@@ -113,6 +114,7 @@ namespace mongo {
         // param: enc, the encoding that should be passed to the KVDictionary
         virtual KVDictionary* getKVDictionary(OperationContext* opCtx,
                                               StringData ident,
+                                              StringData ns,
                                               const KVDictionary::Encoding &enc,
                                               const BSONObj& options,
                                               bool mayCreate = false) = 0;

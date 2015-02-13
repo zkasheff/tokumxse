@@ -279,11 +279,11 @@ namespace mongo {
 
         ftcxx::DBTxn txn(_env);
         _metadataDict.reset(
-            new TokuFTDictionary(_env, txn, "tokuft.metadata", KVDictionary::Encoding(),
-                                 tokuftGlobalOptions.collectionOptions));
+            new TokuFTDictionary(_env, txn, "tokuft.metadata", "tokuft.metadata", KVDictionary::Encoding(),
+                                 tokuftGlobalOptions.collectionOptions, false));
         _internalMetadataDict.reset(
-            new TokuFTDictionary(_env, txn, "tokuft-internal.metadata", KVDictionary::Encoding(),
-                                 tokuftGlobalOptions.collectionOptions));
+            new TokuFTDictionary(_env, txn, "tokuft-internal.metadata", "tokuft-internal.metadata", KVDictionary::Encoding(),
+                                 tokuftGlobalOptions.collectionOptions, false));
         txn.commit();
 
         _checkAndUpgradeDiskFormatVersion();
@@ -341,10 +341,11 @@ namespace mongo {
 
     Status TokuFTEngine::createKVDictionary(OperationContext* opCtx,
                                             StringData ident,
+                                            StringData ns,
                                             const KVDictionary::Encoding &enc,
                                             const BSONObj& options) {
         WriteUnitOfWork wuow(opCtx);
-        TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, enc, _createOptions(options, enc.isRecordStore()));
+        TokuFTDictionary dict(_env, _getDBTxn(opCtx), ident, ns, enc, _createOptions(options, enc.isRecordStore()), true);
         invariant(dict.db().db() != NULL);
         wuow.commit();
 
@@ -353,11 +354,12 @@ namespace mongo {
 
     KVDictionary* TokuFTEngine::getKVDictionary(OperationContext* opCtx,
                                                 StringData ident,
+                                                StringData ns,
                                                 const KVDictionary::Encoding &enc,
                                                 const BSONObj& options,
                                                 bool mayCreate) {
         // TODO: mayCreate
-        return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, enc, _createOptions(options, enc.isRecordStore()));
+        return new TokuFTDictionary(_env, _getDBTxn(opCtx), ident, ns, enc, _createOptions(options, enc.isRecordStore()), false);
     }
 
     Status TokuFTEngine::dropKVDictionary(OperationContext* opCtx,

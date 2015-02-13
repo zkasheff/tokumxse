@@ -57,8 +57,8 @@
 
 namespace mongo {
 
-    TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, StringData ident,
-                                       const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options)
+    TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, StringData ident, StringData group,
+                                       const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options, bool create)
         : _options(options),
           _db(ftcxx::DBBuilder()
               .set_readpagesize(options.readPageSize)
@@ -69,7 +69,7 @@ namespace mongo {
               .open(env, txn, ident.toString().c_str(), NULL,
                     DB_BTREE /* legacy flag */, DB_CREATE, 0644))
     {
-        LOG(1) << "TokuFT: Opening dictionary \"" << ident << "\" with options " << options.toBSON();
+        LOG(1) << "TokuFT: " << (create ? "Created" : "Opened") << " dictionary \"" << ident << "\" for group \"" << group << "\" with options " << options.toBSON();
     }
 
     namespace {
