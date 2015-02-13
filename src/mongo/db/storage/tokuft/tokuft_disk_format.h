@@ -47,9 +47,10 @@ namespace mongo {
             DISK_VERSION_3 = 3,  // Use KeyString for index entries, incompatible with earlier versions
             DISK_VERSION_4 = 4,  // KeyString gained compressed format, RecordId also uses compressed format, incompatible with earlier versions
             DISK_VERSION_5 = 5,  // KeyString gained type bits, incompatible with earlier versions
+            DISK_VERSION_6 = 6,  // Moved to multiple dictionaries per FT
             DISK_VERSION_NEXT,
             DISK_VERSION_CURRENT = DISK_VERSION_NEXT - 1,
-            MIN_SUPPORTED_VERSION = DISK_VERSION_5,
+            MIN_SUPPORTED_VERSION = DISK_VERSION_6,
             MAX_SUPPORTED_VERSION = DISK_VERSION_CURRENT,
             FIRST_SERIALIZED_VERSION = DISK_VERSION_2,
         };

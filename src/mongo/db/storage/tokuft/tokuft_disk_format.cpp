@@ -183,6 +183,13 @@ namespace mongo {
                 break;
             }
 
+            case DISK_VERSION_6: {
+                // We can't upgrade to version 6 from any previous version, since it changes the
+                // dictionary-to-file mapping.
+                invariant(false);
+                break;
+            }
+
         }
 
         BSONObj oldVersionObj;

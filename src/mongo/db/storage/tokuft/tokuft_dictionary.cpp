@@ -61,14 +61,22 @@ namespace mongo {
                                        const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options, bool create)
         : _options(options),
           _enc(enc),
-          _db(ftcxx::DBBuilder()
-              .set_readpagesize(options.readPageSize)
-              .set_pagesize(options.pageSize)
-              .set_compression_method(options.compressionMethod())
-              .set_fanout(options.fanout)
-              .set_app_private(&_enc)
-              .open(env, txn, ident.toString().c_str(), NULL,
-                    DB_BTREE /* legacy flag */, DB_CREATE, 0644))
+          _db(create
+              ? ftcxx::DBBuilder()
+                .set_readpagesize(options.readPageSize)
+                .set_pagesize(options.pageSize)
+                .set_compression_method(options.compressionMethod())
+                .set_fanout(options.fanout)
+                .set_app_private(&_enc)
+                .create_new_db(env, txn, ident.toString().c_str(), group.toString().c_str(), 0)
+              : ftcxx::DBBuilder()
+                .set_readpagesize(options.readPageSize)
+                .set_pagesize(options.pageSize)
+                .set_compression_method(options.compressionMethod())
+                .set_fanout(options.fanout)
+                .set_app_private(&_enc)
+                .open(env, txn, ident.toString().c_str(), NULL,
+                      DB_BTREE /* legacy flag */, DB_CREATE, 0644))
     {
         LOG(1) << "TokuFT: " << (create ? "Created" : "Opened") << " dictionary \"" << ident << "\" for group \"" << group << "\" with options " << options.toBSON();
     }
