@@ -116,7 +116,7 @@ namespace mongo {
             virtual Slice currVal() const;
 
         private:
-            typedef ftcxx::BufferedCursor<TokuFTDictionary::Encoding, ftcxx::DB::NullFilter> FTCursor;
+            typedef ftcxx::BufferedCursor<const TokuFTDictionary::Encoding &, ftcxx::DB::NullFilter> FTCursor;
             FTCursor _cur;
             Slice _currKey;
             Slice _currVal;
@@ -167,11 +167,8 @@ namespace mongo {
         const ftcxx::DB &db() const { return _db; }
 
     private:
-        Encoding encoding() const {
-            return TokuFTDictionary::Encoding(_db.descriptor());
-        }
-
         TokuFTDictionaryOptions _options;
+        Encoding _enc;
         ftcxx::DB _db;
         boost::scoped_ptr<TokuFTCappedDeleteRangeOptimizer> _rangeOptimizer;
     };

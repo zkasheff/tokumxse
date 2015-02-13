@@ -59,9 +59,8 @@ namespace mongo {
 
     namespace {
 
-        int tokuft_update(const ftcxx::Slice &desc,
-                                 const ftcxx::Slice &key, const ftcxx::Slice &oldVal,
-                                 const ftcxx::Slice &extra, ftcxx::SetvalFunc setval) {
+        int tokuft_update(const ftcxx::Slice &key, const ftcxx::Slice &oldVal,
+                          const ftcxx::Slice &extra, ftcxx::SetvalFunc setval) {
             boost::scoped_ptr<KVUpdateMessage> message(KVUpdateMessage::fromSerialized(ftslice2slice(extra)));
             Slice kvOldVal = ftslice2slice(oldVal);
             Slice kvNewVal;
@@ -93,7 +92,7 @@ namespace mongo {
             }
         }
 
-        void appendBoundsEndpoint(TokuFTDictionary::Encoding &enc, const DBT *key, BSONArrayBuilder &bounds) {
+        void appendBoundsEndpoint(const TokuFTDictionary::Encoding &enc, const DBT *key, BSONArrayBuilder &bounds) {
             ftcxx::Slice keySlice(static_cast<char *>(key->data), key->size);
             if (enc.isRecordStore()) {
                 BSONObjBuilder b(bounds.subobjStart());
@@ -116,17 +115,18 @@ namespace mongo {
         }
 
         void prettyBounds(const ftcxx::DB &db, const DBT *leftKey, const DBT *rightKey, BSONArrayBuilder &bounds) {
-            TokuFTDictionary::Encoding enc(db.descriptor());
+            const TokuFTDictionary::Encoding *enc = db.app_private<TokuFTDictionary::Encoding>();
+            invariant(enc != NULL);
             if (leftKey->data == NULL) {
                 bounds.append("-infinity");
             } else {
-                appendBoundsEndpoint(enc, leftKey, bounds);
+                appendBoundsEndpoint(*enc, leftKey, bounds);
             }
 
             if (rightKey->data == NULL) {
                 bounds.append("+infinity");
             } else {
-                appendBoundsEndpoint(enc, rightKey, bounds);
+                appendBoundsEndpoint(*enc, rightKey, bounds);
             }
         }
 

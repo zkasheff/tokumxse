@@ -60,12 +60,13 @@ namespace mongo {
     TokuFTDictionary::TokuFTDictionary(const ftcxx::DBEnv &env, const ftcxx::DBTxn &txn, StringData ident, StringData group,
                                        const KVDictionary::Encoding &enc, const TokuFTDictionaryOptions& options, bool create)
         : _options(options),
+          _enc(enc),
           _db(ftcxx::DBBuilder()
               .set_readpagesize(options.readPageSize)
               .set_pagesize(options.pageSize)
               .set_compression_method(options.compressionMethod())
               .set_fanout(options.fanout)
-              .set_descriptor(slice2ftslice(enc.serialize()))
+              .set_app_private(&_enc)
               .open(env, txn, ident.toString().c_str(), NULL,
                     DB_BTREE /* legacy flag */, DB_CREATE, 0644))
     {
@@ -142,9 +143,9 @@ namespace mongo {
         try {
             ftcxx::Slice foundKey;
             ftcxx::Slice foundVal;
-            for (ftcxx::BufferedCursor<TokuFTDictionary::Encoding, DupKeyFilter> cur(
+            for (ftcxx::BufferedCursor<const TokuFTDictionary::Encoding &, DupKeyFilter> cur(
                      _db.buffered_cursor(_getDBTxn(opCtx), slice2ftslice(lookupLeft), slice2ftslice(lookupRight),
-                                         encoding(), DupKeyFilter(encoding(), id), 0, true, false, true));
+                                         const_cast<const TokuFTDictionary::Encoding &>(_enc), DupKeyFilter(_enc, id), 0, true, false, true));
                  cur.ok(); cur.next(foundKey, foundVal)) {
                 // If we found anything, it must have matched the filter, so it's a duplicate.
                 return Status(ErrorCodes::DuplicateKey, "E11000 duplicate key error");
@@ -178,9 +179,8 @@ namespace mongo {
             _rangeOptimizer.reset(new TokuFTCappedDeleteRangeOptimizer(_db));
         }
 
-        const Encoding &enc = encoding();
-        dassert(enc.isRecordStore());
-        RecordId leftId = enc.KVDictionary::Encoding::extractRecordId(left);
+        dassert(_enc.isRecordStore());
+        RecordId leftId = _enc.KVDictionary::Encoding::extractRecordId(left);
         // Since the transaction doing the capped insert that caused these
         // deletes is still live, there's no sense in optimizing the range
         // [left, right], so just optimize anything left of the range
@@ -266,7 +266,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const Slice &key, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn), slice2ftslice(key),
-                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+                                         dict._enc, ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);
@@ -274,7 +274,7 @@ namespace mongo {
 
     TokuFTDictionary::Cursor::Cursor(const TokuFTDictionary &dict, OperationContext *txn, const int direction)
         : _cur(dict.db().buffered_cursor(_getDBTxn(txn),
-                                         dict.encoding(), ftcxx::DB::NullFilter(), 0, (direction == 1))),
+                                         dict._enc, ftcxx::DB::NullFilter(), 0, (direction == 1))),
           _currKey(), _currVal(), _ok(false)
     {
         advance(txn);
