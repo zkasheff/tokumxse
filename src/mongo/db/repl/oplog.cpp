@@ -269,7 +269,7 @@ namespace {
         OplogDocWriter writer( partial, obj );
         checkOplogInsert( localOplogRSCollection->insertDocument( txn, &writer, false ) );
 
-        ctx.getClient()->setLastOp( slot.first );
+        txn->getClient()->setLastOp( slot.first );
 
         wunit.commit();
 
@@ -335,7 +335,7 @@ namespace {
         OplogDocWriter writer( partial, obj );
         checkOplogInsert( localOplogMainCollection->insertDocument( txn, &writer, false ) );
 
-        ctx.getClient()->setLastOp( slot.first );
+        txn->getClient()->setLastOp(slot.first);
 
         wunit.commit();
     }
@@ -383,6 +383,7 @@ namespace {
         // rollback-safe logOp listeners
         //
         getGlobalAuthorizationManager()->logOp(txn, opstr, ns, obj, patt, b);
+        logOpForSharding(txn, opstr, ns, obj, patt, fromMigrate);
 
         try {
             // TODO SERVER-15192 remove this once all listeners are rollback-safe.
@@ -394,7 +395,6 @@ namespace {
                 }
             };
             txn->recoveryUnit()->registerChange(new RollbackPreventer());
-            logOpForSharding(txn, opstr, ns, obj, patt, fromMigrate);
             logOpForDbHash(ns);
 
             if ( strstr( ns, ".system.js" ) ) {
@@ -462,7 +462,7 @@ namespace {
                 long long hash = ops.back()["h"].numberLong();
                 bgsync->setLastAppliedHash(hash);
 
-                ctx.getClient()->setLastOp(lastOptime);
+                txn->getClient()->setLastOp(lastOptime);
 
                 replCoord->setMyLastOptime(lastOptime);
                 setNewOptime(lastOptime);

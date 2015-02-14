@@ -1221,25 +1221,27 @@ namespace mongo {
             }
 
             if ( createCollection ) {
-                ScopedTransaction transaction(txn, MODE_IX);
-                Lock::DBLock lk(txn->lockState(), nsString.db(), MODE_X);
-                Client::Context ctx(txn, nsString.ns(), false /* don't check version */);
+                MONGO_WRITE_CONFLICT_RETRY_LOOP_BEGIN {
+                    ScopedTransaction transaction(txn, MODE_IX);
+                    Lock::DBLock lk(txn->lockState(), nsString.db(), MODE_X);
+                    Client::Context ctx(txn, nsString.ns(), false /* don't check version */);
 
-                if (!checkIsMasterForDatabase(nsString, result)) {
-                    return;
-                }
+                    if (!checkIsMasterForDatabase(nsString, result)) {
+                        return;
+                    }
 
-                Database* db = ctx.db();
-                if ( db->getCollection( nsString.ns() ) ) {
-                    // someone else beat us to it
-                }
-                else {
-                    WriteUnitOfWork wuow(txn);
-                    uassertStatusOK( userCreateNS( txn, db,
-                                                   nsString.ns(), BSONObj(),
-                                                   !request.isFromReplication() ) );
-                    wuow.commit();
-                }
+                    Database* db = ctx.db();
+                    if ( db->getCollection( nsString.ns() ) ) {
+                        // someone else beat us to it
+                    }
+                    else {
+                        WriteUnitOfWork wuow(txn);
+                        uassertStatusOK( userCreateNS( txn, db,
+                                                       nsString.ns(), BSONObj(),
+                                                       !request.isFromReplication() ) );
+                        wuow.commit();
+                    }
+                } MONGO_WRITE_CONFLICT_RETRY_LOOP_END(txn, "update", nsString.ns());
             }
 
             ///////////////////////////////////////////
@@ -1247,7 +1249,7 @@ namespace mongo {
             Lock::DBLock dbLock(txn->lockState(), nsString.db(), MODE_IX);
             Lock::CollectionLock colLock(txn->lockState(),
                                          nsString.ns(),
-                                         MODE_IX);
+                                         parsedUpdate.isIsolated() ? MODE_X : MODE_IX);
             ///////////////////////////////////////////
 
             if (!checkIsMasterForDatabase(nsString, result)) {
@@ -1388,7 +1390,9 @@ namespace mongo {
                     break;
                 }
 
-                Lock::CollectionLock collLock(txn->lockState(), nss.ns(), MODE_IX);
+                Lock::CollectionLock collLock(txn->lockState(),
+                                              nss.ns(),
+                                              parsedDelete.isIsolated() ? MODE_X : MODE_IX);
 
                 // getExecutorDelete() also checks if writes are allowed.
                 if (!checkIsMasterForDatabase(nss, result)) {

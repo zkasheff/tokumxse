@@ -37,6 +37,7 @@
 #include <boost/shared_ptr.hpp>
 #include <memory>
 #include <algorithm>
+#include <utility>
 
 #include <rocksdb/comparator.h>
 #include <rocksdb/db.h>
@@ -191,7 +192,10 @@ namespace mongo {
     int64_t RocksRecordStore::storageSize(OperationContext* txn, BSONObjBuilder* extraInfo,
                                           int infoLevel) const {
         // we're lying, but that's the best we can do for now
-        return _dataSize.load();
+        // We need to make it multiple of 256 to make
+        // jstests/concurrency/fsm_workloads/convert_to_capped_collection.js happy
+        return static_cast<int64_t>(
+            std::max(_dataSize.load() & (~255), static_cast<long long>(256)));
     }
 
     RecordData RocksRecordStore::dataFor(OperationContext* txn, const RecordId& loc) const {
@@ -656,7 +660,7 @@ namespace mongo {
 
         SharedBuffer data = SharedBuffer::allocate(valueStorage.size());
         memcpy(data.get(), valueStorage.data(), valueStorage.size());
-        return RecordData(data.moveFrom(), valueStorage.size());
+        return RecordData(data, valueStorage.size());
     }
 
     void RocksRecordStore::_changeNumRecords( OperationContext* txn, bool insert ) {
@@ -797,7 +801,7 @@ namespace mongo {
         if (!_eof && loc == _curr && _iterator->Valid() && _iterator->status().ok()) {
             SharedBuffer data = SharedBuffer::allocate(_iterator->value().size());
             memcpy(data.get(), _iterator->value().data(), _iterator->value().size());
-            return RecordData(data.moveFrom(), _iterator->value().size());
+            return RecordData(std::move(data), _iterator->value().size());
         }
         return RocksRecordStore::_getDataFor(_db, _prefix, _txn, loc);
     }
