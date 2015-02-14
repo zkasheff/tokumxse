@@ -199,7 +199,7 @@ namespace mongo {
         }
 
         // Return an owned RecordData that uses the SharedBuffer from `value'
-        return RecordData(value.ownedBuf().moveFrom(), value.size());
+        return RecordData(std::move(value.ownedBuf()), value.size());
     }
 
     RecordData KVRecordStore::dataFor( OperationContext* txn, const RecordId& loc) const {
@@ -594,7 +594,7 @@ namespace mongo {
         if (!_savedLoc.isNull() && _savedLoc == loc) {
             Slice val = _savedVal;
             invariant(val.mutableData());
-            return RecordData(val.ownedBuf().moveFrom(), val.size());
+            return RecordData(std::move(val.ownedBuf()), val.size());
         } else {
             // .. otherwise something strange happened and the caller actually
             // wants some other data entirely. we should probably never execute
