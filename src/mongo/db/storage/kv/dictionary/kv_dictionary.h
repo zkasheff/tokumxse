@@ -43,7 +43,7 @@ namespace mongo {
     class OperationContext;
 
     /**
-     * A sort dictionary interface for mapping binary keys to binary
+     * A sorted dictionary interface for mapping binary keys to binary
      * values.
      *
      * Used as the primary storage abstraction for KVRecordStore and
@@ -52,11 +52,16 @@ namespace mongo {
     class KVDictionary {
     public:
         /**
-         * Compares two binary keys in a KVDictionary. We use either an encoding of the RecordId
-         * which is memcmpable or KeyString which also is.
+         * Encoding describes how keys are packed in a KVDictionary.
+         *
+         * We use either an encoding of the RecordId which is memcmpable or KeyString which also is.
+         * In TokuFT, we always use the builtin memcmp function, but the ftcxx cursors need a
+         * comparison function as a template parameter for zero-copy bounds checking, so we've kept
+         * the implementation of cmp and operator() here as a comparison.
          *
          * Also can describe whether we are a record store or an index, and can unpack an index's
-         * keys in that case.
+         * keys in that case.  These facts are used somewhat by TokuFT in minor places, though the
+         * KVDictionary implementation *usually* shouldn't need to know anything about the encoding.
          */
         class Encoding {
             const bool _isRecordStore;
@@ -81,8 +86,7 @@ namespace mongo {
             static Encoding forRecordStore();
 
             /**
-             * Return an Encoding object that compares keys using memcmp
-             * and sorts by length when keys contain a common prefix.
+             * An Encoding for an index with the given ordering.
              */
             static Encoding forIndex(const Ordering &o);
 
@@ -118,8 +122,16 @@ namespace mongo {
 
             bool isIndex() const { return _isIndex; }
 
+            /**
+             * Given a key-val pair, extract the key portion.  In accordance with the KeyString API,
+             * we encode the TypeBits in the val, so we need that here.
+             */
             BSONObj extractKey(const Slice &key, const Slice &val) const;
 
+            /**
+             * Extract the RecordId, which is either the whole slice (as a RecordStore) or the last
+             * few bytes at the end (as a SortedDataInterface).
+             */
             RecordId extractRecordId(const Slice &key) const;
         };
 
@@ -128,6 +140,11 @@ namespace mongo {
         /**
          * Get the associated value for `key' from the dictionary, storing
          * an owned slice into `value'
+         *
+         * Passing skipPessimisticLocking will avoid doing a serializable read even if opCtx seems
+         * to be about to do a write.  This is only used by the KVCatalog to do non-serializable
+         * reads when we intend to write to the collection, not the KVCatalog.  It is only
+         * implemented in TokuFT at the moment.
          *
          * Return:
          *   Status::OK() success, value contains and owned slice.
@@ -160,6 +177,8 @@ namespace mongo {
         /**
          * Update the value for `key' whose old value is `oldValue' and
          * whose new image should be the result of applying `message'.
+         *
+         * Only needs to be implemented if updateSupported().
          * 
          * Requires: `oldValue' is in fact the value
          *           `get(opCtx, key, ...)' would return
