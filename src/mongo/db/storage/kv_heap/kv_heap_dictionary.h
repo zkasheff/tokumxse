@@ -121,8 +121,6 @@ namespace mongo {
             return false;
         }
 
-        Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info );
-
         virtual bool compactSupported() const { return false; }
 
         KVDictionary::Cursor *getCursor(OperationContext *opCtx, const Slice &key, const int direction = 1) const;

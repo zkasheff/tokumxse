@@ -235,21 +235,6 @@ namespace mongo {
         return true;
     }
 
-    Status TokuFTDictionary::setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info ) {
-        StringData name = option.fieldName();
-        if ( name == "usePowerOf2Sizes" ) {
-            // we ignore, so just say ok
-            return Status::OK();
-        }
-
-        // TODO: compression, page sizes, fanout
-
-        return Status( ErrorCodes::InvalidOptions,
-                       mongoutils::str::stream()
-                       << "unknown custom option to TokuFT: "
-                       << name );
-    }
-
     Status TokuFTDictionary::compact(OperationContext *opCtx) {
         Status s = statusFromTokuFTError(_db.db()->optimize(_db.db()));
         if (!s.isOK()) {

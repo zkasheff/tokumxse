@@ -158,8 +158,6 @@ namespace mongo {
 
         virtual bool appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale ) const;
 
-        virtual Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info );
-
         virtual bool compactSupported() const { return true; }
 
         virtual bool compactsInPlace() const { return true; }

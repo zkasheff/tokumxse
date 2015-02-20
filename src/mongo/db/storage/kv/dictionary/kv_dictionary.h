@@ -273,14 +273,6 @@ namespace mongo {
          */
         virtual bool appendCustomStats(OperationContext *opCtx, BSONObjBuilder* result, double scale) const = 0;
 
-        /**
-         * Set a custom `option' for this dictionary
-         *
-         * Return: Status::OK(), success
-         *         Status::code() == ErrorCodes::BadValue, option not recognized / supported
-         */
-        virtual Status setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info) = 0;
-
         virtual bool compactSupported() const { return false; }
 
         virtual bool compactsInPlace() const { invariant(false); }
