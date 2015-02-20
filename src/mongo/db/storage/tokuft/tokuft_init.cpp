@@ -72,7 +72,7 @@ namespace mongo {
             if (params.directoryperdb) {
                 severe() << "TokuFT: directoryPerDB not yet supported.  This option is incompatible with TokuFT.";
                 severe() << "TokuFT: The following server crash is intentional.";
-                fassertFailedNoTrace(28610);
+                fassertFailedNoTrace(28620);
             }
             if (tokuftGlobalOptions.engineOptions.directoryForIndexes) {
                 severe() << "TokuFT: directoryForIndexes not yet supported.  This option is incompatible with TokuFT.";
