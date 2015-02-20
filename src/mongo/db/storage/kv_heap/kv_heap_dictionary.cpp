@@ -171,19 +171,6 @@ namespace mongo {
         _insertPair(key, value);
     }
 
-    Status KVHeapDictionary::setCustomOption(OperationContext *opCtx, const BSONElement& option, BSONObjBuilder* info ) {
-        StringData name = option.fieldName();
-        if ( name == "usePowerOf2Sizes" ) {
-            // we ignore, so just say ok
-            return Status::OK();
-        }
-
-        return Status( ErrorCodes::InvalidOptions,
-                       mongoutils::str::stream()
-                       << "unknown custom option to KVHeapDictionary: "
-                       << name );
-    }
-
     KVDictionary::Cursor *KVHeapDictionary::getCursor(OperationContext *opCtx, const Slice &key, const int direction) const {
         return new Cursor(_map, _cmp, key, direction);
     }

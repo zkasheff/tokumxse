@@ -438,12 +438,6 @@ namespace mongo {
         _db->appendCustomStats(txn, result, scale);
     }
 
-    Status KVRecordStore::setCustomOption( OperationContext* txn,
-                                           const BSONElement& option,
-                                           BSONObjBuilder* info ) {
-        return _db->setCustomOption( txn, option, info );
-    }
-
     RecordId KVRecordStore::_nextId() {
         return RecordId(_nextIdNum.fetchAndAdd(1));
     }

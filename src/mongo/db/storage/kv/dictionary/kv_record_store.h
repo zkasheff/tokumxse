@@ -160,10 +160,6 @@ namespace mongo {
                                         BSONObjBuilder* result,
                                         double scale ) const;
 
-        virtual Status setCustomOption( OperationContext* txn,
-                                        const BSONElement& option,
-                                        BSONObjBuilder* info = NULL );
-
         // KVRecordStore is not capped, KVRecordStoreCapped is capped.
 
         virtual bool isCapped() const { return false; }
