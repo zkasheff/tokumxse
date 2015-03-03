@@ -77,7 +77,7 @@ namespace mongo {
             if (tokuftGlobalOptions.engineOptions.directoryForIndexes) {
                 severe() << "TokuFT: directoryForIndexes not yet supported.  This option is incompatible with TokuFT.";
                 severe() << "TokuFT: The following server crash is intentional.";
-                fassertFailedNoTrace(28611);
+                fassertFailedNoTrace(28621);
             }
 
             KVStorageEngineOptions options;
