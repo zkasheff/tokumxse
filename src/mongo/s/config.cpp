@@ -54,6 +54,7 @@
 #include "mongo/s/type_lockpings.h"
 #include "mongo/s/type_settings.h"
 #include "mongo/s/type_shard.h"
+#include "mongo/s/type_tags.h"
 #include "mongo/util/exit.h"
 #include "mongo/util/log.h"
 #include "mongo/util/net/message.h"
@@ -137,7 +138,6 @@ namespace mongo {
                                       val.obj(),
                                       true /* upsert */,
                                       false /* multi */,
-                                      WriteConcernOptions::AllConfigs,
                                       NULL);
 
         if ( !result.isOK() ) {
@@ -601,7 +601,6 @@ namespace mongo {
                                            n,
                                            true, // upsert
                                            false, // multi
-                                           WriteConcernOptions::AllConfigs,
                                            &response );
 
             if ( !result.isOK() ) {
@@ -667,7 +666,6 @@ namespace mongo {
         Status result = clusterDelete( DatabaseType::ConfigNS,
                                        BSON( DatabaseType::name( _name )),
                                        0 /* limit */,
-                                       WriteConcernOptions::AllConfigs,
                                        NULL );
 
         if ( !result.isOK() ) {
@@ -1112,7 +1110,6 @@ namespace mongo {
             Status result = clusterInsert( SettingsType::ConfigNS,
                                            BSON( SettingsType::key("chunksize") <<
                                                  SettingsType::chunksize(chunkSize)),
-                                           WriteConcernOptions::AllConfigs,
                                            NULL );
             if (!result.isOK()) {
                 warning() << "couldn't set chunkSize on config db" << causedBy(result);
@@ -1123,7 +1120,6 @@ namespace mongo {
         Status result = clusterCreateIndex( ChunkType::ConfigNS,
                                             BSON( ChunkType::ns() << 1 << ChunkType::min() << 1 ),
                                             true, // unique
-                                            WriteConcernOptions::AllConfigs,
                                             NULL );
 
         if (!result.isOK()) {
@@ -1135,7 +1131,6 @@ namespace mongo {
                                            ChunkType::shard() << 1 <<
                                            ChunkType::min() << 1 ),
                                      true, // unique
-                                     WriteConcernOptions::AllConfigs,
                                      NULL );
 
         if (!result.isOK()) {
@@ -1147,7 +1142,6 @@ namespace mongo {
                                      BSON( ChunkType::ns() << 1 <<
                                            ChunkType::DEPRECATED_lastmod() << 1 ),
                                      true, // unique
-                                     WriteConcernOptions::AllConfigs,
                                      NULL );
 
         if (!result.isOK()) {
@@ -1157,7 +1151,6 @@ namespace mongo {
         result = clusterCreateIndex( ShardType::ConfigNS,
                                      BSON( ShardType::host() << 1 ),
                                      true, // unique
-                                     WriteConcernOptions::AllConfigs,
                                      NULL );
 
         if (!result.isOK()) {
@@ -1167,7 +1160,6 @@ namespace mongo {
         result = clusterCreateIndex(LocksType::ConfigNS,
                                     BSON(LocksType::lockID() << 1),
                                     false, // unique
-                                    WriteConcernOptions::AllConfigs,
                                     NULL);
 
         if (!result.isOK()) {
@@ -1178,7 +1170,6 @@ namespace mongo {
                                      BSON( LocksType::state() << 1 <<
                                            LocksType::process() << 1 ),
                                      false, // unique
-                                     WriteConcernOptions::AllConfigs,
                                      NULL );
 
         if (!result.isOK()) {
@@ -1189,12 +1180,20 @@ namespace mongo {
         result = clusterCreateIndex( LockpingsType::ConfigNS,
                                      BSON( LockpingsType::ping() << 1 ),
                                      false, // unique
-                                     WriteConcernOptions::AllConfigs,
                                      NULL );
 
         if (!result.isOK()) {
             warning() << "couldn't create lockping ping time index on config db"
                       << causedBy(result);
+        }
+
+        result = clusterCreateIndex(TagsType::ConfigNS,
+                                    BSON(TagsType::ns() << 1 << TagsType::min() << 1),
+                                    true, // unique
+                                    NULL);
+
+        if (!result.isOK()) {
+            warning() << "could not create index ns_1_min_1: " << causedBy(result);
         }
     }
 
@@ -1255,7 +1254,6 @@ namespace mongo {
 
             Status result = clusterInsert( ChangelogType::ConfigNS,
                                            msg,
-                                           WriteConcernOptions::AllConfigs,
                                            NULL );
 
             if ( !result.isOK() ) {
@@ -1285,7 +1283,6 @@ namespace mongo {
                     BSON("$set" << BSON(ShardType::host(newConnectionString))),
                     false, // upsert
                     false, // multi
-                    WriteConcernOptions::AllConfigs,
                     NULL);
 
             if ( !result.isOK() ) {

@@ -26,8 +26,6 @@
  *    then also delete it in the license file.
  */
 
-// strategy_sharded.cpp
-
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kSharding
 
 #include "mongo/platform/basic.h"
@@ -213,7 +211,7 @@ namespace mongo {
             BufBuilder buffer( ShardedClientCursor::INIT_REPLY_BUFFER_SIZE );
             int docCount = 0;
             const int startFrom = cc->getTotalSent();
-            bool hasMore = cc->sendNextBatch( r, q.ntoreturn, buffer, docCount );
+            bool hasMore = cc->sendNextBatch(q.ntoreturn, buffer, docCount);
 
             if ( hasMore ) {
                 LOG(5) << "storing cursor : " << cc->getId() << endl;
@@ -472,9 +470,9 @@ namespace mongo {
         // Note that this implementation will not handle targeting retries and does not completely
         // emulate write behavior
 
-        ChunkManagerTargeter targeter;
-        Status status =
-            targeter.init(NamespaceString(targetingBatchItem.getRequest()->getTargetingNS()));
+        ChunkManagerTargeter targeter(NamespaceString(
+                                        targetingBatchItem.getRequest()->getTargetingNS()));
+        Status status = targeter.init();
         if (!status.isOK())
             return status;
 
@@ -661,7 +659,7 @@ namespace mongo {
             BufBuilder buffer( ShardedClientCursor::INIT_REPLY_BUFFER_SIZE );
             int docCount = 0;
             const int startFrom = cursor->getTotalSent();
-            bool hasMore = cursor->sendNextBatch( r, ntoreturn, buffer, docCount );
+            bool hasMore = cursor->sendNextBatch(ntoreturn, buffer, docCount);
 
             if ( hasMore ) {
                 // still more data

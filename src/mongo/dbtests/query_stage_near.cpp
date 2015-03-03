@@ -183,6 +183,14 @@ namespace {
             return IS_EOF;
         }
 
+        virtual void finishSaveState() { }
+
+        virtual void finishRestoreState(OperationContext* txn) { }
+
+        virtual void finishInvalidate(OperationContext* txn,
+                                      const RecordId& dl,
+                                      InvalidationType type) { }
+
     private:
 
         OwnedPointerVector<MockInterval> _intervals;
